@@ -1,6 +1,6 @@
 """
-Script per popolare il DB con gli appartamenti.
-I prezzi sono placeholder — il sistema usa il mercato come riferimento reale.
+Script per popolare il DB con gli appartamenti reali.
+I prezzi base/min/max sono placeholder — il sistema usa il mercato come riferimento.
 
 Esegui con: python -m scripts.seed_apartments
 """
@@ -17,28 +17,91 @@ from backend.db.models import Apartment, PricingRule, RuleType
 Base.metadata.create_all(bind=engine)
 
 # ─────────────────────────────────────────
-# APPARTAMENTI
-# Aggiorna con i dati reali dell'amico.
-# base_price/min_price/max_price sono placeholder — il sistema usa i prezzi di mercato.
+# APPARTAMENTI REALI (10/12 — aggiungere gli ultimi 2)
 # ─────────────────────────────────────────
 APARTMENTS = [
-    {"name": "Appartamento 1",  "zone": "Milano", "beds": 1, "bathrooms": 1, "max_guests": 2},
-    {"name": "Appartamento 2",  "zone": "Milano", "beds": 1, "bathrooms": 1, "max_guests": 2},
-    {"name": "Appartamento 3",  "zone": "Milano", "beds": 2, "bathrooms": 1, "max_guests": 4},
-    {"name": "Appartamento 4",  "zone": "Milano", "beds": 2, "bathrooms": 1, "max_guests": 4},
-    {"name": "Appartamento 5",  "zone": "Milano", "beds": 1, "bathrooms": 1, "max_guests": 2},
-    {"name": "Appartamento 6",  "zone": "Milano", "beds": 2, "bathrooms": 2, "max_guests": 4},
-    {"name": "Appartamento 7",  "zone": "Milano", "beds": 1, "bathrooms": 1, "max_guests": 2},
-    {"name": "Appartamento 8",  "zone": "Milano", "beds": 2, "bathrooms": 1, "max_guests": 3},
-    {"name": "Appartamento 9",  "zone": "Milano", "beds": 2, "bathrooms": 1, "max_guests": 4},
-    {"name": "Appartamento 10", "zone": "Milano", "beds": 1, "bathrooms": 1, "max_guests": 2},
-    {"name": "Appartamento 11", "zone": "Milano", "beds": 3, "bathrooms": 1, "max_guests": 5},
-    {"name": "Appartamento 12", "zone": "Milano", "beds": 2, "bathrooms": 2, "max_guests": 4},
+    {
+        "name": "Milano Argonne - Città Studi",
+        "zone": "Città Studi",
+        "airbnb_id": "1180318632008544966",
+        "beds": 3, "bathrooms": 2, "max_guests": 10,
+        "address": "Argonne, Milano",
+    },
+    {
+        "name": "Milano Centro - Corso Como + Terrazza",
+        "zone": "Corso Como",
+        "airbnb_id": "1458873214878783684",
+        "beds": 1, "bathrooms": 1, "max_guests": 4,
+        "address": "Corso Como, Milano",
+    },
+    {
+        "name": "Milano Isola - Duomo #02",
+        "zone": "Isola",
+        "airbnb_id": "912084201406663998",
+        "beds": 1, "bathrooms": 1, "max_guests": 3,
+        "address": "Isola, Milano",
+    },
+    {
+        "name": "Milano Isola - Duomo #03",
+        "zone": "Isola",
+        "airbnb_id": "1115892614185441040",
+        "beds": 1, "bathrooms": 1, "max_guests": 2,
+        "address": "Isola, Milano",
+    },
+    {
+        "name": "Milano Isola - Duomo + Terrazza #04",
+        "zone": "Isola",
+        "airbnb_id": "1376802547601831461",
+        "beds": 1, "bathrooms": 1, "max_guests": 2,
+        "address": "Isola, Milano",
+    },
+    {
+        "name": "Milano Porta Venezia + Terrazza",
+        "zone": "Porta Venezia",
+        "airbnb_id": "1197796592915430096",
+        "beds": 1, "bathrooms": 1, "max_guests": 2,
+        "address": "Porta Venezia, Milano",
+    },
+    {
+        "name": "Milano Navigli - San Gottardo",
+        "zone": "Navigli",
+        "airbnb_id": "1377600493238075570",
+        "beds": 2, "bathrooms": 1, "max_guests": 5,
+        "address": "Corso San Gottardo 18, Navigli, Milano",
+    },
+    {
+        "name": "Milano CityLife - Sempione #01",
+        "zone": "CityLife",
+        "airbnb_id": "1615309089277313630",
+        "beds": 1, "bathrooms": 1, "max_guests": 4,
+        "address": "CityLife, Milano",
+    },
+    {
+        "name": "Milano CityLife - Sempione #02",
+        "zone": "CityLife",
+        "airbnb_id": "1615305262544083656",
+        "beds": 2, "bathrooms": 1, "max_guests": 4,
+        "address": "CityLife, Milano",
+    },
+    {
+        "name": "Milano Corso Buenos Aires",
+        "zone": "Porta Venezia",
+        "airbnb_id": "1615281215291884120",
+        "beds": 2, "bathrooms": 1, "max_guests": 6,
+        "address": "Corso Buenos Aires, Milano",
+    },
+    # ── DA AGGIUNGERE: appartamenti 11 e 12 ──
+    # {
+    #     "name": "...",
+    #     "zone": "...",
+    #     "airbnb_id": "...",
+    #     "beds": X, "bathrooms": X, "max_guests": X,
+    #     "address": "...",
+    # },
 ]
 
 # ─────────────────────────────────────────
 # REGOLE DEFAULT — logica market-based con fasce temporali
-# Il prezzo di riferimento è sempre il mercato competitor della zona.
 # ─────────────────────────────────────────
 DEFAULT_RULES = [
     {
@@ -101,7 +164,6 @@ def seed():
 
         db.commit()
         print(f"✓ Inseriti {len(APARTMENTS)} appartamenti con regole market-based.")
-        print("  Aggiorna nomi, zone e dettagli con i dati reali del tuo amico.")
 
     except Exception as e:
         db.rollback()
