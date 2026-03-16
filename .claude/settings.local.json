@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(mkdir -p /Users/christiancoli/Desktop/ChrisClaudeCode/gestione_affitti_brevi/backend/db/migrations && mkdir -p /Users/christiancoli/Desktop/ChrisClaudeCode/gestione_affitti_brevi/backend/agent && mkdir -p /Users/christiancoli/Desktop/ChrisClaudeCode/gestione_affitti_brevi/backend/integrations && mkdir -p /Users/christiancoli/Desktop/ChrisClaudeCode/gestione_affitti_brevi/backend/telegram && mkdir -p /Users/christiancoli/Desktop/ChrisClaudeCode/gestione_affitti_brevi/frontend)"
+      "Bash(mkdir -p /Users/christiancoli/Desktop/ChrisClaudeCode/gestione_affitti_brevi/backend/db/migrations && mkdir -p /Users/christiancoli/Desktop/ChrisClaudeCode/gestione_affitti_brevi/backend/agent && mkdir -p /Users/christiancoli/Desktop/ChrisClaudeCode/gestione_affitti_brevi/backend/integrations && mkdir -p /Users/christiancoli/Desktop/ChrisClaudeCode/gestione_affitti_brevi/backend/telegram && mkdir -p /Users/christiancoli/Desktop/ChrisClaudeCode/gestione_affitti_brevi/frontend)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)"
     ]
   }
 }

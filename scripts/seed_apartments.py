@@ -1,6 +1,6 @@
 """
-Script per popolare il DB con appartamenti di esempio.
-Modifica i dati con quelli reali del tuo amico.
+Script per popolare il DB con gli appartamenti.
+I prezzi sono placeholder — il sistema usa il mercato come riferimento reale.
 
 Esegui con: python -m scripts.seed_apartments
 """
@@ -16,46 +16,62 @@ from backend.db.models import Apartment, PricingRule, RuleType
 
 Base.metadata.create_all(bind=engine)
 
+# ─────────────────────────────────────────
+# APPARTAMENTI
+# Aggiorna con i dati reali dell'amico.
+# base_price/min_price/max_price sono placeholder — il sistema usa i prezzi di mercato.
+# ─────────────────────────────────────────
 APARTMENTS = [
-    {"name": "Navigli Classic",    "zone": "Navigli",       "base_price": 105, "min_price": 75,  "max_price": 160, "beds": 1, "bathrooms": 1, "max_guests": 2},
-    {"name": "Navigli Loft",       "zone": "Navigli",       "base_price": 120, "min_price": 85,  "max_price": 180, "beds": 2, "bathrooms": 1, "max_guests": 4},
-    {"name": "Brera Suite",        "zone": "Brera",         "base_price": 145, "min_price": 100, "max_price": 220, "beds": 1, "bathrooms": 1, "max_guests": 2},
-    {"name": "Brera Attico",       "zone": "Brera",         "base_price": 170, "min_price": 120, "max_price": 250, "beds": 2, "bathrooms": 2, "max_guests": 4},
-    {"name": "Duomo View",         "zone": "Duomo",         "base_price": 160, "min_price": 110, "max_price": 240, "beds": 1, "bathrooms": 1, "max_guests": 2},
-    {"name": "Porta Romana Studio","zone": "Porta Romana",  "base_price": 95,  "min_price": 65,  "max_price": 145, "beds": 1, "bathrooms": 1, "max_guests": 2},
-    {"name": "Porta Romana Apt",   "zone": "Porta Romana",  "base_price": 110, "min_price": 75,  "max_price": 160, "beds": 2, "bathrooms": 1, "max_guests": 3},
-    {"name": "Isola Design",       "zone": "Isola",         "base_price": 115, "min_price": 80,  "max_price": 170, "beds": 2, "bathrooms": 1, "max_guests": 4},
-    {"name": "Garibaldi Modern",   "zone": "Garibaldi",     "base_price": 125, "min_price": 85,  "max_price": 185, "beds": 2, "bathrooms": 1, "max_guests": 4},
-    {"name": "Porta Venezia Gem",  "zone": "Porta Venezia", "base_price": 108, "min_price": 75,  "max_price": 165, "beds": 1, "bathrooms": 1, "max_guests": 2},
-    {"name": "Città Studi Cozy",   "zone": "Città Studi",   "base_price": 82,  "min_price": 55,  "max_price": 125, "beds": 1, "bathrooms": 1, "max_guests": 2},
-    {"name": "Città Studi Family", "zone": "Città Studi",   "base_price": 95,  "min_price": 65,  "max_price": 140, "beds": 3, "bathrooms": 1, "max_guests": 5},
+    {"name": "Appartamento 1",  "zone": "Milano", "beds": 1, "bathrooms": 1, "max_guests": 2},
+    {"name": "Appartamento 2",  "zone": "Milano", "beds": 1, "bathrooms": 1, "max_guests": 2},
+    {"name": "Appartamento 3",  "zone": "Milano", "beds": 2, "bathrooms": 1, "max_guests": 4},
+    {"name": "Appartamento 4",  "zone": "Milano", "beds": 2, "bathrooms": 1, "max_guests": 4},
+    {"name": "Appartamento 5",  "zone": "Milano", "beds": 1, "bathrooms": 1, "max_guests": 2},
+    {"name": "Appartamento 6",  "zone": "Milano", "beds": 2, "bathrooms": 2, "max_guests": 4},
+    {"name": "Appartamento 7",  "zone": "Milano", "beds": 1, "bathrooms": 1, "max_guests": 2},
+    {"name": "Appartamento 8",  "zone": "Milano", "beds": 2, "bathrooms": 1, "max_guests": 3},
+    {"name": "Appartamento 9",  "zone": "Milano", "beds": 2, "bathrooms": 1, "max_guests": 4},
+    {"name": "Appartamento 10", "zone": "Milano", "beds": 1, "bathrooms": 1, "max_guests": 2},
+    {"name": "Appartamento 11", "zone": "Milano", "beds": 3, "bathrooms": 1, "max_guests": 5},
+    {"name": "Appartamento 12", "zone": "Milano", "beds": 2, "bathrooms": 2, "max_guests": 4},
 ]
 
-# Regole default applicate a tutti gli appartamenti
+# ─────────────────────────────────────────
+# REGOLE DEFAULT — logica market-based con fasce temporali
+# Il prezzo di riferimento è sempre il mercato competitor della zona.
+# ─────────────────────────────────────────
 DEFAULT_RULES = [
     {
-        "name": "Weekend boost",
+        "name": "Early bird (90+ giorni)",
         "rule_type": RuleType.percentage_above_market,
-        "adjustment_pct": 12.0,
-        "condition": {"days_of_week": ["friday", "saturday"]},
-        "description": "Venerdì e sabato alza del 12% rispetto alla media zona",
+        "adjustment_pct": 20.0,
+        "condition": {"days_min": 90},
+        "description": "Prenotazione con 90+ giorni di anticipo: mercato +20%",
         "priority": 1,
     },
     {
-        "name": "Last minute sconto",
-        "rule_type": RuleType.last_minute,
-        "adjustment_pct": -10.0,
-        "condition": {"days_before": 2},
-        "description": "Se mancano meno di 2 giorni e non è prenotato, sconto del 10%",
+        "name": "Standard (60-90 giorni)",
+        "rule_type": RuleType.percentage_above_market,
+        "adjustment_pct": 0.0,
+        "condition": {"days_min": 60, "days_max": 90},
+        "description": "60-90 giorni prima: prezzo di mercato senza variazioni",
         "priority": 2,
     },
     {
-        "name": "Segui mercato",
-        "rule_type": RuleType.percentage_above_market,
-        "adjustment_pct": 5.0,
-        "condition": None,
-        "description": "Base: stai sempre al +5% rispetto alla media dei competitor",
+        "name": "Medio termine (30-60 giorni)",
+        "rule_type": RuleType.percentage_below_market,
+        "adjustment_pct": -2.0,
+        "condition": {"days_min": 30, "days_max": 60},
+        "description": "30-60 giorni prima: mercato -2%",
         "priority": 3,
+    },
+    {
+        "name": "Last minute (0-30 giorni)",
+        "rule_type": RuleType.last_minute,
+        "adjustment_pct": -5.0,
+        "condition": {"days_min": 0, "days_max": 30},
+        "description": "Meno di 30 giorni: mercato -5% per stimolare prenotazioni",
+        "priority": 4,
     },
 ]
 
@@ -69,16 +85,23 @@ def seed():
             return
 
         for apt_data in APARTMENTS:
-            apt = Apartment(**apt_data, current_price=apt_data["base_price"])
+            apt = Apartment(
+                **apt_data,
+                base_price=0,
+                min_price=0,
+                max_price=9999,
+                current_price=None,
+            )
             db.add(apt)
-            db.flush()  # Per avere l'ID
+            db.flush()
 
             for rule_data in DEFAULT_RULES:
                 rule = PricingRule(apartment_id=apt.id, **rule_data)
                 db.add(rule)
 
         db.commit()
-        print(f"✓ Inseriti {len(APARTMENTS)} appartamenti con regole default.")
+        print(f"✓ Inseriti {len(APARTMENTS)} appartamenti con regole market-based.")
+        print("  Aggiorna nomi, zone e dettagli con i dati reali del tuo amico.")
 
     except Exception as e:
         db.rollback()

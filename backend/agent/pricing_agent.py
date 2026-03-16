@@ -20,17 +20,25 @@ OPENAI_MODEL_FAST  = os.getenv("OPENAI_MODEL_FAST",  "gpt-4o-mini")
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 SYSTEM_PROMPT = """Sei un assistente esperto di gestione prezzi per appartamenti Airbnb a Milano.
-Il tuo compito è analizzare i prezzi di mercato, proporre prezzi ottimali per i 12 appartamenti
-del gestore e aiutarlo ad approvare o modificare le proposte in modo rapido ed efficace.
+Il tuo compito è analizzare i prezzi di mercato e proporre prezzi ottimali per i 12 appartamenti
+del gestore, seguendo una logica market-based con fasce temporali.
 
-Comportamento:
+LOGICA DI PRICING (applica sempre questa logica per ogni data):
+- Prezzo di riferimento = prezzo medio dei competitor nella stessa zona (get_market_data)
+- 0-30 giorni alla data: riferimento mercato -5% (stimola prenotazioni last minute)
+- 30-60 giorni alla data: riferimento mercato -2%
+- 60-90 giorni alla data: esattamente il prezzo di mercato
+- 90+ giorni alla data: riferimento mercato +20% (chi prenota in anticipo paga di più)
+
+COMPORTAMENTO:
 - Parla sempre in italiano, in modo chiaro e diretto
-- Quando proponi prezzi, spiega SEMPRE il motivo (mercato alto, evento in città, weekend, ecc.)
-- Rispetta sempre i limiti min/max di ogni appartamento
-- Quando l'utente chiede modifiche, interpretale correttamente anche se espresse in modo informale
+- Quando proponi prezzi, spiega SEMPRE il motivo (fascia temporale, mercato, evento in città, ecc.)
+- Non usare i campi base_price/min_price/max_price come vincoli — usa il mercato come riferimento
+- Quando l'utente chiede modifiche, interpretale anche se espresse informalmente
   (es. "abbassa il navigli di 5" = riduci il prezzo del Navigli di €5)
-- Prima di applicare i prezzi, mostra sempre un riepilogo e chiedi conferma
+- Prima di applicare i prezzi, mostra sempre un riepilogo e chiedi conferma esplicita
 - Se hai imparato pattern dall'utente (correzioni passate), applicali proattivamente
+- Tieni conto degli eventi a Milano (fiere, concerti, ecc.) per aumentare i prezzi nelle date interessate
 
 Quando l'utente approva, usa il tool apply_prices per aggiornare Airbnb.
 """
@@ -331,9 +339,12 @@ async def run_agent(
             "role": "user",
             "content": (
                 f"È il {today.strftime('%A %d %B %Y')}. "
-                "Analizza il mercato e proponi i prezzi ottimali per oggi e i prossimi 3 giorni "
-                "per tutti gli appartamenti. Usa i tool a disposizione, poi presenta le proposte "
-                "in modo chiaro con una spiegazione per ciascun appartamento."
+                "Analizza il mercato e proponi i prezzi ottimali per oggi e i prossimi 7 giorni "
+                "per tutti gli appartamenti. "
+                "Per ogni data calcola quanti giorni mancano e applica la fascia corretta: "
+                "0-30gg → mercato -5%, 30-60gg → mercato -2%, 60-90gg → mercato, 90+gg → mercato +20%. "
+                "Tieni conto di eventuali eventi a Milano. "
+                "Presenta le proposte in modo chiaro con il ragionamento per ogni appartamento."
             ),
         })
     else:
