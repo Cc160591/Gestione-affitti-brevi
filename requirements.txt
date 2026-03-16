@@ -25,5 +25,5 @@ python-multipart==0.0.12
 
 # Utils
 python-dotenv==1.0.1
-pydantic==2.9.2
-pydantic-settings==2.5.2
+pydantic==2.11.1
+pydantic-settings==2.8.1
