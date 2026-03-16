@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+
+{% block content %}
+<div x-data="dashboard()" x-init="init()" x-cloak>
+
+  <!-- Intestazione -->
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">Dashboard</h1>
+    <span class="text-sm text-gray-400" x-text="today"></span>
+  </div>
+
+  <!-- KPI row -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+      <p class="text-xs text-gray-400 uppercase tracking-wide mb-1">Appartamenti</p>
+      <p class="text-3xl font-bold text-gray-800" x-text="stats.total_apartments ?? '—'"></p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+      <p class="text-xs text-gray-400 uppercase tracking-wide mb-1">Con prezzo</p>
+      <p class="text-3xl font-bold text-gray-800" x-text="stats.apartments_with_price ?? '—'"></p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+      <p class="text-xs text-gray-400 uppercase tracking-wide mb-1">Prezzo medio</p>
+      <p class="text-3xl font-bold text-blue-600"
+         x-text="stats.avg_current_price ? '€' + stats.avg_current_price : '—'"></p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+      <p class="text-xs text-gray-400 uppercase tracking-wide mb-1">Ultima sessione</p>
+      <p class="text-lg font-bold text-gray-800" x-text="stats.last_session?.date ?? '—'"></p>
+      <p class="text-xs mt-1"
+         :class="{'text-green-500': stats.last_session?.status === 'applied',
+                  'text-yellow-500': stats.last_session?.status === 'pending',
+                  'text-gray-400': !stats.last_session}"
+         x-text="stats.last_session?.status ?? 'nessuna'"></p>
+    </div>
+  </div>
+
+  <!-- Banner eventi imminenti -->
+  <template x-if="stats.upcoming_events?.length">
+    <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-8">
+      <p class="text-sm font-semibold text-amber-800 mb-2">Prossimi eventi a Milano</p>
+      <div class="flex flex-wrap gap-2">
+        <template x-for="ev in stats.upcoming_events" :key="ev.name">
+          <span class="inline-flex items-center gap-1 bg-white border border-amber-200 text-amber-700 text-xs px-3 py-1.5 rounded-full shadow-sm">
+            <span x-text="ev.name"></span>
+            <span class="text-amber-400" x-text="ev.start_date"></span>
+            <template x-if="ev.expected_impact_pct">
+              <span class="text-green-600 font-semibold" x-text="'+' + ev.expected_impact_pct + '%'"></span>
+            </template>
+          </span>
+        </template>
+      </div>
+    </div>
+  </template>
+
+  <!-- Griglia appartamenti -->
+  <h2 class="text-lg font-semibold mb-4">Appartamenti</h2>
+
+  <template x-if="loading">
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <template x-for="i in 12" :key="i">
+        <div class="bg-white rounded-xl border border-gray-100 p-5 animate-pulse">
+          <div class="h-4 bg-gray-200 rounded w-3/4 mb-3"></div>
+          <div class="h-8 bg-gray-200 rounded w-1/2 mb-2"></div>
+          <div class="h-3 bg-gray-100 rounded w-1/3"></div>
+        </div>
+      </template>
+    </div>
+  </template>
+
+  <template x-if="!loading">
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <template x-for="apt in apartments" :key="apt.id">
+        <a :href="'/apartments/' + apt.id"
+           class="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all p-5 group">
+          <div class="flex justify-between items-start mb-3">
+            <h3 class="font-semibold text-gray-800 group-hover:text-blue-600 transition" x-text="apt.name"></h3>
+            <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full" x-text="apt.zone"></span>
+          </div>
+          <p class="text-2xl font-bold text-blue-600 mb-0.5"
+             x-text="apt.current_price ? '€' + apt.current_price : '—'"></p>
+          <p class="text-xs text-gray-400 mb-3" x-text="'Base: €' + apt.base_price"></p>
+          <div class="flex items-center justify-between text-xs text-gray-400 border-t border-gray-50 pt-2">
+            <span x-text="apt.beds + ' letti · ' + apt.max_guests + ' ospiti'"></span>
+            <span class="text-gray-300">
+              <span x-text="'€' + apt.min_price"></span>–<span x-text="'€' + apt.max_price"></span>
+            </span>
+          </div>
+        </a>
+      </template>
+    </div>
+  </template>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function dashboard() {
+  return {
+    apartments: [],
+    stats: {},
+    loading: true,
+    today: new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+
+    async init() {
+      const [aptsRes, statsRes] = await Promise.all([
+        fetch('/api/apartments'),
+        fetch('/api/dashboard/stats'),
+      ]);
+      this.apartments = await aptsRes.json();
+      this.stats = await statsRes.json();
+      this.loading = false;
+    },
+  };
+}
+</script>
+{% endblock %}

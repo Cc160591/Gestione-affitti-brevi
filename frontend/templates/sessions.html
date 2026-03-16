@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Sessioni{% endblock %}
+{% block nav_sessions %}active{% endblock %}
+
+{% block content %}
+<div x-data="sessionsPage()" x-init="init()" x-cloak>
+
+  <h1 class="text-2xl font-bold mb-6">Sessioni Telegram</h1>
+
+  <template x-if="loading">
+    <p class="text-center text-gray-400 py-20">Caricamento...</p>
+  </template>
+
+  <template x-if="!loading && sessions.length === 0">
+    <div class="text-center py-20">
+      <p class="text-gray-400 mb-2">Nessuna sessione registrata.</p>
+      <p class="text-sm text-gray-300">Le sessioni vengono create ogni mattina alle 8:00 dallo scheduler.</p>
+    </div>
+  </template>
+
+  <template x-if="!loading && sessions.length > 0">
+    <div class="space-y-3">
+      <template x-for="s in sessions" :key="s.id">
+        <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+
+          <!-- Header sessione -->
+          <div class="flex items-center justify-between p-5 cursor-pointer"
+               @click="toggle(s.id)">
+            <div class="flex items-center gap-4">
+              <div>
+                <p class="font-semibold" x-text="s.session_date"></p>
+                <p class="text-xs text-gray-400" x-text="'Avviata: ' + formatTs(s.started_at)"></p>
+              </div>
+              <span class="text-xs px-3 py-1 rounded-full font-medium"
+                    :class="{
+                      'bg-green-50 text-green-600': s.status === 'applied',
+                      'bg-blue-50 text-blue-600': s.status === 'approved' || s.status === 'modified',
+                      'bg-yellow-50 text-yellow-600': s.status === 'pending',
+                      'bg-gray-100 text-gray-500': s.status === 'skipped',
+                    }"
+                    x-text="s.status"></span>
+            </div>
+            <div class="flex items-center gap-6 text-sm text-gray-400">
+              <span x-text="s.n_proposed + ' proposti'"></span>
+              <span x-text="s.n_approved + ' approvati'"></span>
+              <span class="text-gray-300" x-text="open === s.id ? '▲' : '▼'"></span>
+            </div>
+          </div>
+
+          <!-- Dettaglio espandibile -->
+          <template x-if="open === s.id">
+            <div x-data="{ detail: null }" x-init="loadDetail(s.id).then(d => detail = d)">
+              <div class="border-t border-gray-100 p-5">
+
+                <!-- Prezzi proposti vs approvati -->
+                <template x-if="detail">
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div>
+                      <h3 class="text-sm font-semibold text-gray-500 mb-2">Prezzi proposti</h3>
+                      <template x-if="!detail.proposed_prices">
+                        <p class="text-xs text-gray-400">—</p>
+                      </template>
+                      <template x-if="detail.proposed_prices">
+                        <div class="space-y-1">
+                          <template x-for="[aptId, price] in Object.entries(detail.proposed_prices)" :key="aptId">
+                            <div class="flex justify-between text-sm">
+                              <span class="text-gray-500" x-text="'Apt #' + aptId"></span>
+                              <span class="font-medium" x-text="'€' + price"></span>
+                            </div>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+                    <div>
+                      <h3 class="text-sm font-semibold text-gray-500 mb-2">Prezzi approvati</h3>
+                      <template x-if="!detail.approved_prices">
+                        <p class="text-xs text-gray-400">—</p>
+                      </template>
+                      <template x-if="detail.approved_prices">
+                        <div class="space-y-1">
+                          <template x-for="[aptId, price] in Object.entries(detail.approved_prices)" :key="aptId">
+                            <div class="flex justify-between text-sm">
+                              <span class="text-gray-500" x-text="'Apt #' + aptId"></span>
+                              <span class="font-medium text-blue-600" x-text="'€' + price"></span>
+                            </div>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+
+                  <!-- Log conversazione -->
+                  <template x-if="detail.conversation_log && detail.conversation_log.length > 0">
+                    <div>
+                      <h3 class="text-sm font-semibold text-gray-500 mb-3">Conversazione</h3>
+                      <div class="space-y-2 max-h-96 overflow-y-auto pr-2">
+                        <template x-for="(msg, i) in detail.conversation_log" :key="i">
+                          <div class="flex"
+                               :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
+                            <div class="max-w-lg text-sm px-4 py-2 rounded-2xl"
+                                 :class="msg.role === 'user'
+                                   ? 'bg-blue-600 text-white rounded-br-sm'
+                                   : 'bg-gray-100 text-gray-700 rounded-bl-sm'">
+                              <p x-text="msg.content"></p>
+                              <p class="text-xs mt-1 opacity-60" x-text="msg.ts ? msg.ts.substring(11, 16) : ''"></p>
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                </template>
+
+                <template x-if="!detail">
+                  <p class="text-center text-gray-400 text-sm py-4">Caricamento...</p>
+                </template>
+
+              </div>
+            </div>
+          </template>
+
+        </div>
+      </template>
+    </div>
+  </template>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function sessionsPage() {
+  return {
+    sessions: [],
+    loading: true,
+    open: null,
+
+    async init() {
+      const res = await fetch('/api/sessions');
+      this.sessions = await res.json();
+      this.loading = false;
+    },
+
+    toggle(id) {
+      this.open = this.open === id ? null : id;
+    },
+
+    async loadDetail(id) {
+      const res = await fetch(`/api/sessions/${id}`);
+      return res.json();
+    },
+
+    formatTs(ts) {
+      if (!ts) return '—';
+      return new Date(ts).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    },
+  };
+}
+</script>
+{% endblock %}

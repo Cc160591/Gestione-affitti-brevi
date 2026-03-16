@@ -1,0 +1,384 @@
+{% extends "base.html" %}
+{% block title %}Appartamento{% endblock %}
+
+{% block content %}
+<div x-data="aptDetail({{ apartment_id }})" x-init="init()" x-cloak>
+
+  <!-- Back -->
+  <a href="/" class="text-sm text-gray-400 hover:text-blue-600 mb-4 inline-block">&larr; Dashboard</a>
+
+  <!-- Loading -->
+  <template x-if="loading">
+    <div class="text-center text-gray-400 py-20">Caricamento...</div>
+  </template>
+
+  <template x-if="!loading">
+    <div>
+
+      <!-- Header appartamento -->
+      <div class="flex items-start justify-between mb-6">
+        <div>
+          <h1 class="text-2xl font-bold" x-text="apt.name"></h1>
+          <p class="text-gray-400 text-sm" x-text="apt.zone + (apt.address ? ' · ' + apt.address : '')"></p>
+        </div>
+        <button @click="editOpen = true"
+                class="text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+          Modifica prezzi
+        </button>
+      </div>
+
+      <!-- Info cards -->
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+        <div class="bg-white rounded-xl border border-gray-100 p-4">
+          <p class="text-xs text-gray-400 mb-1">Prezzo attuale</p>
+          <p class="text-2xl font-bold text-blue-600" x-text="apt.current_price ? '€' + apt.current_price : '—'"></p>
+        </div>
+        <div class="bg-white rounded-xl border border-gray-100 p-4">
+          <p class="text-xs text-gray-400 mb-1">Base</p>
+          <p class="text-2xl font-bold" x-text="'€' + apt.base_price"></p>
+        </div>
+        <div class="bg-white rounded-xl border border-gray-100 p-4">
+          <p class="text-xs text-gray-400 mb-1">Minimo</p>
+          <p class="text-2xl font-bold text-red-500" x-text="'€' + apt.min_price"></p>
+        </div>
+        <div class="bg-white rounded-xl border border-gray-100 p-4">
+          <p class="text-xs text-gray-400 mb-1">Massimo</p>
+          <p class="text-2xl font-bold text-green-600" x-text="'€' + apt.max_price"></p>
+        </div>
+        <div class="bg-white rounded-xl border border-gray-100 p-4">
+          <p class="text-xs text-gray-400 mb-1">Capacità</p>
+          <p class="text-lg font-bold" x-text="apt.beds + ' letti · ' + apt.max_guests + ' ospiti'"></p>
+        </div>
+      </div>
+
+      <!-- Grafico storico prezzi -->
+      <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-8">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold">Storico prezzi</h2>
+          <select x-model="historyDays" @change="loadHistory()"
+                  class="text-sm border border-gray-200 rounded-lg px-3 py-1.5">
+            <option value="30">Ultimi 30 giorni</option>
+            <option value="60">Ultimi 60 giorni</option>
+            <option value="90">Ultimi 90 giorni</option>
+          </select>
+        </div>
+        <template x-if="history.length === 0">
+          <p class="text-center text-gray-400 py-10 text-sm">Nessun dato storico disponibile.</p>
+        </template>
+        <template x-if="history.length > 0">
+          <canvas id="priceChart" height="100"></canvas>
+        </template>
+      </div>
+
+      <!-- Tabella storico -->
+      <template x-if="history.length > 0">
+        <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-8">
+          <h2 class="text-lg font-semibold mb-4">Dettaglio proposte</h2>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-xs text-gray-400 border-b border-gray-100">
+                  <th class="text-left pb-2">Data</th>
+                  <th class="text-right pb-2">Proposto</th>
+                  <th class="text-right pb-2">Approvato</th>
+                  <th class="text-right pb-2">Delta</th>
+                  <th class="text-right pb-2">Comp. avg</th>
+                  <th class="text-left pb-2 pl-4">Note AI</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="h in history" :key="h.id">
+                  <tr class="border-b border-gray-50 hover:bg-gray-50">
+                    <td class="py-2 text-gray-500" x-text="h.price_date"></td>
+                    <td class="py-2 text-right font-medium" x-text="h.proposed_price ? '€' + h.proposed_price : '—'"></td>
+                    <td class="py-2 text-right font-medium text-blue-600"
+                        x-text="h.approved_price ? '€' + h.approved_price : '—'"></td>
+                    <td class="py-2 text-right"
+                        :class="h.correction_delta > 0 ? 'text-green-500' : h.correction_delta < 0 ? 'text-red-500' : 'text-gray-400'"
+                        x-text="h.correction_delta ? (h.correction_delta > 0 ? '+' : '') + h.correction_delta : '—'"></td>
+                    <td class="py-2 text-right text-gray-400"
+                        x-text="h.competitor_avg ? '€' + h.competitor_avg : '—'"></td>
+                    <td class="py-2 pl-4 text-gray-400 max-w-xs truncate"
+                        x-text="h.user_feedback || h.ai_reasoning || '—'"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+
+      <!-- Regole di pricing -->
+      <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold">Regole di pricing</h2>
+          <button @click="ruleFormOpen = true"
+                  class="text-sm bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
+            + Aggiungi regola
+          </button>
+        </div>
+
+        <template x-if="rules.length === 0">
+          <p class="text-center text-gray-400 py-8 text-sm">Nessuna regola configurata.</p>
+        </template>
+
+        <template x-if="rules.length > 0">
+          <div class="space-y-2">
+            <template x-for="rule in rules" :key="rule.id">
+              <div class="flex items-start justify-between p-4 rounded-lg border"
+                   :class="rule.is_active ? 'border-gray-100 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'">
+                <div class="flex-1">
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="font-medium text-sm" x-text="rule.name"></span>
+                    <span class="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full" x-text="rule.rule_type"></span>
+                    <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full"
+                          x-text="'priorità ' + rule.priority"></span>
+                  </div>
+                  <p class="text-xs text-gray-400"
+                     x-text="rule.description || (rule.adjustment_pct ? (rule.adjustment_pct > 0 ? '+' : '') + rule.adjustment_pct + '%' : rule.fixed_value ? '€' + rule.fixed_value : '')">
+                  </p>
+                </div>
+                <div class="flex items-center gap-2 ml-4">
+                  <button @click="toggleRule(rule)"
+                          class="text-xs px-3 py-1 rounded-lg transition"
+                          :class="rule.is_active ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'"
+                          x-text="rule.is_active ? 'Attiva' : 'Inattiva'"></button>
+                  <button @click="deleteRule(rule)"
+                          class="text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition">
+                    Elimina
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+
+    </div>
+  </template>
+
+  <!-- Modal: Modifica prezzi -->
+  <template x-if="editOpen">
+    <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50" @click.self="editOpen = false">
+      <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+        <h3 class="text-lg font-semibold mb-6">Modifica prezzi</h3>
+        <div class="space-y-4">
+          <div>
+            <label class="text-sm text-gray-500 block mb-1">Prezzo base (€)</label>
+            <input type="number" x-model.number="editForm.base_price"
+                   class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="text-sm text-gray-500 block mb-1">Prezzo minimo (€)</label>
+            <input type="number" x-model.number="editForm.min_price"
+                   class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="text-sm text-gray-500 block mb-1">Prezzo massimo (€)</label>
+            <input type="number" x-model.number="editForm.max_price"
+                   class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="text-sm text-gray-500 block mb-1">Note</label>
+            <textarea x-model="editForm.notes" rows="2"
+                      class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+          </div>
+        </div>
+        <div class="flex gap-3 mt-6">
+          <button @click="saveApt()"
+                  class="flex-1 bg-blue-600 text-white rounded-lg py-2 font-medium hover:bg-blue-700 transition">
+            Salva
+          </button>
+          <button @click="editOpen = false"
+                  class="flex-1 bg-gray-100 text-gray-600 rounded-lg py-2 font-medium hover:bg-gray-200 transition">
+            Annulla
+          </button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- Modal: Aggiungi regola -->
+  <template x-if="ruleFormOpen">
+    <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50" @click.self="ruleFormOpen = false">
+      <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+        <h3 class="text-lg font-semibold mb-6">Nuova regola</h3>
+        <div class="space-y-4">
+          <div>
+            <label class="text-sm text-gray-500 block mb-1">Nome</label>
+            <input type="text" x-model="ruleForm.name" placeholder="es. Weekend boost"
+                   class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="text-sm text-gray-500 block mb-1">Tipo regola</label>
+            <select x-model="ruleForm.rule_type"
+                    class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="percentage_above_market">% sopra mercato</option>
+              <option value="percentage_below_market">% sotto mercato</option>
+              <option value="fixed_price">Prezzo fisso</option>
+              <option value="event_boost">Boost evento</option>
+              <option value="last_minute">Last minute</option>
+              <option value="occupancy_based">Basato su occupancy</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-sm text-gray-500 block mb-1">Aggiustamento %</label>
+              <input type="number" x-model.number="ruleForm.adjustment_pct" placeholder="es. 10"
+                     class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label class="text-sm text-gray-500 block mb-1">Priorità</label>
+              <input type="number" x-model.number="ruleForm.priority" min="1"
+                     class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+          </div>
+          <div>
+            <label class="text-sm text-gray-500 block mb-1">Descrizione</label>
+            <input type="text" x-model="ruleForm.description" placeholder="Spiega quando si applica"
+                   class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+        </div>
+        <div class="flex gap-3 mt-6">
+          <button @click="saveRule()"
+                  class="flex-1 bg-gray-800 text-white rounded-lg py-2 font-medium hover:bg-gray-700 transition">
+            Crea regola
+          </button>
+          <button @click="ruleFormOpen = false"
+                  class="flex-1 bg-gray-100 text-gray-600 rounded-lg py-2 font-medium hover:bg-gray-200 transition">
+            Annulla
+          </button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function aptDetail(aptId) {
+  return {
+    aptId,
+    apt: {},
+    history: [],
+    rules: [],
+    loading: true,
+    historyDays: 30,
+    editOpen: false,
+    editForm: {},
+    ruleFormOpen: false,
+    ruleForm: { name: '', rule_type: 'percentage_above_market', adjustment_pct: null, priority: 1, description: '' },
+    chart: null,
+
+    async init() {
+      await Promise.all([this.loadApt(), this.loadHistory(), this.loadRules()]);
+      this.loading = false;
+      this.$nextTick(() => this.buildChart());
+    },
+
+    async loadApt() {
+      const res = await fetch(`/api/apartments/${this.aptId}`);
+      this.apt = await res.json();
+      this.editForm = { base_price: this.apt.base_price, min_price: this.apt.min_price, max_price: this.apt.max_price, notes: this.apt.notes };
+    },
+
+    async loadHistory() {
+      const res = await fetch(`/api/apartments/${this.aptId}/history?days=${this.historyDays}`);
+      this.history = await res.json();
+    },
+
+    async loadRules() {
+      const res = await fetch(`/api/apartments/${this.aptId}/rules`);
+      this.rules = await res.json();
+    },
+
+    buildChart() {
+      const ctx = document.getElementById('priceChart');
+      if (!ctx || this.history.length === 0) return;
+      if (this.chart) this.chart.destroy();
+
+      const sorted = [...this.history].sort((a, b) => a.price_date.localeCompare(b.price_date));
+      this.chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: sorted.map(h => h.price_date),
+          datasets: [
+            {
+              label: 'Proposto',
+              data: sorted.map(h => h.proposed_price),
+              borderColor: '#93c5fd',
+              backgroundColor: 'transparent',
+              borderDash: [4, 4],
+              pointRadius: 3,
+            },
+            {
+              label: 'Approvato',
+              data: sorted.map(h => h.approved_price),
+              borderColor: '#2563eb',
+              backgroundColor: 'rgba(37,99,235,0.05)',
+              fill: true,
+              pointRadius: 4,
+              tension: 0.3,
+            },
+            {
+              label: 'Competitor avg',
+              data: sorted.map(h => h.competitor_avg),
+              borderColor: '#d1d5db',
+              backgroundColor: 'transparent',
+              borderDash: [2, 3],
+              pointRadius: 2,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'top' } },
+          scales: {
+            y: { beginAtZero: false, ticks: { callback: v => '€' + v } },
+          },
+        },
+      });
+    },
+
+    async saveApt() {
+      await fetch(`/api/apartments/${this.aptId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(this.editForm),
+      });
+      await this.loadApt();
+      this.editOpen = false;
+    },
+
+    async toggleRule(rule) {
+      await fetch(`/api/apartments/${this.aptId}/rules/${rule.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !rule.is_active }),
+      });
+      await this.loadRules();
+    },
+
+    async deleteRule(rule) {
+      if (!confirm(`Eliminare la regola "${rule.name}"?`)) return;
+      await fetch(`/api/apartments/${this.aptId}/rules/${rule.id}`, { method: 'DELETE' });
+      await this.loadRules();
+    },
+
+    async saveRule() {
+      if (!this.ruleForm.name) return;
+      await fetch(`/api/apartments/${this.aptId}/rules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(this.ruleForm),
+      });
+      this.ruleForm = { name: '', rule_type: 'percentage_above_market', adjustment_pct: null, priority: 1, description: '' };
+      this.ruleFormOpen = false;
+      await this.loadRules();
+    },
+  };
+}
+</script>
+{% endblock %}

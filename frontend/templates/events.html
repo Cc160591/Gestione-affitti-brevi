@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}Eventi{% endblock %}
+{% block nav_events %}active{% endblock %}
+
+{% block content %}
+<div x-data="eventsPage()" x-init="init()" x-cloak>
+
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">Eventi di mercato</h1>
+    <button @click="formOpen = true"
+            class="text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+      + Nuovo evento
+    </button>
+  </div>
+
+  <template x-if="loading">
+    <p class="text-center text-gray-400 py-20">Caricamento...</p>
+  </template>
+
+  <template x-if="!loading && events.length === 0">
+    <div class="text-center py-20">
+      <p class="text-gray-400 mb-2">Nessun evento registrato.</p>
+      <p class="text-sm text-gray-300">Aggiungi eventi come fiere, concerti o festival per influenzare le proposte dell'AI.</p>
+    </div>
+  </template>
+
+  <template x-if="!loading && events.length > 0">
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs text-gray-400 border-b border-gray-100 bg-gray-50">
+            <th class="text-left px-5 py-3">Evento</th>
+            <th class="text-left px-3 py-3">Tipo</th>
+            <th class="text-left px-3 py-3">Date</th>
+            <th class="text-left px-3 py-3">Zone</th>
+            <th class="text-right px-3 py-3">Impatto stimato</th>
+            <th class="text-right px-3 py-3">Impatto reale</th>
+            <th class="px-3 py-3"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="ev in events" :key="ev.id">
+            <tr class="border-b border-gray-50 hover:bg-gray-50"
+                :class="isUpcoming(ev) ? '' : 'opacity-50'">
+              <td class="px-5 py-3">
+                <p class="font-medium" x-text="ev.name"></p>
+                <p class="text-xs text-gray-400" x-text="ev.notes || ev.source || ''"></p>
+              </td>
+              <td class="px-3 py-3">
+                <span class="bg-purple-50 text-purple-600 text-xs px-2 py-0.5 rounded-full"
+                      x-text="ev.event_type || '—'"></span>
+              </td>
+              <td class="px-3 py-3 text-gray-500">
+                <span x-text="ev.start_date"></span>
+                <template x-if="ev.end_date !== ev.start_date">
+                  <span> → <span x-text="ev.end_date"></span></span>
+                </template>
+              </td>
+              <td class="px-3 py-3">
+                <template x-if="ev.zones_affected">
+                  <div class="flex flex-wrap gap-1">
+                    <template x-for="z in ev.zones_affected" :key="z">
+                      <span class="bg-gray-100 text-gray-500 text-xs px-2 py-0.5 rounded-full" x-text="z"></span>
+                    </template>
+                  </div>
+                </template>
+                <template x-if="!ev.zones_affected">
+                  <span class="text-gray-300 text-xs">Tutte</span>
+                </template>
+              </td>
+              <td class="px-3 py-3 text-right">
+                <template x-if="ev.expected_impact_pct">
+                  <span class="text-green-600 font-semibold" x-text="'+' + ev.expected_impact_pct + '%'"></span>
+                </template>
+                <template x-if="!ev.expected_impact_pct">
+                  <span class="text-gray-300">—</span>
+                </template>
+              </td>
+              <td class="px-3 py-3 text-right">
+                <template x-if="ev.actual_impact_pct">
+                  <span class="font-semibold" x-text="(ev.actual_impact_pct > 0 ? '+' : '') + ev.actual_impact_pct + '%'"></span>
+                </template>
+                <template x-if="!ev.actual_impact_pct">
+                  <span class="text-gray-300">—</span>
+                </template>
+              </td>
+              <td class="px-3 py-3 text-right">
+                <button @click="deleteEvent(ev)"
+                        class="text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition">
+                  Elimina
+                </button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </template>
+
+  <!-- Modal nuovo evento -->
+  <template x-if="formOpen">
+    <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50" @click.self="formOpen = false">
+      <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-lg">
+        <h3 class="text-lg font-semibold mb-6">Nuovo evento</h3>
+        <div class="space-y-4">
+          <div>
+            <label class="text-sm text-gray-500 block mb-1">Nome evento *</label>
+            <input type="text" x-model="form.name" placeholder="es. Salone del Mobile 2026"
+                   class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-sm text-gray-500 block mb-1">Tipo</label>
+              <select x-model="form.event_type"
+                      class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">—</option>
+                <option value="fiera">Fiera</option>
+                <option value="concerto">Concerto</option>
+                <option value="festival">Festival</option>
+                <option value="sportivo">Evento sportivo</option>
+                <option value="altro">Altro</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-sm text-gray-500 block mb-1">Impatto stimato (%)</label>
+              <input type="number" x-model.number="form.expected_impact_pct" placeholder="es. 20"
+                     class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-sm text-gray-500 block mb-1">Data inizio *</label>
+              <input type="date" x-model="form.start_date"
+                     class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label class="text-sm text-gray-500 block mb-1">Data fine *</label>
+              <input type="date" x-model="form.end_date"
+                     class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+          </div>
+          <div>
+            <label class="text-sm text-gray-500 block mb-1">Zone interessate (separate da virgola)</label>
+            <input type="text" x-model="form.zones_raw" placeholder="es. Navigli, Brera, Centro"
+                   class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="text-sm text-gray-500 block mb-1">Note</label>
+            <input type="text" x-model="form.notes" placeholder="Link o info aggiuntive"
+                   class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+        </div>
+        <div class="flex gap-3 mt-6">
+          <button @click="saveEvent()"
+                  class="flex-1 bg-blue-600 text-white rounded-lg py-2 font-medium hover:bg-blue-700 transition">
+            Crea evento
+          </button>
+          <button @click="formOpen = false"
+                  class="flex-1 bg-gray-100 text-gray-600 rounded-lg py-2 font-medium hover:bg-gray-200 transition">
+            Annulla
+          </button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function eventsPage() {
+  return {
+    events: [],
+    loading: true,
+    formOpen: false,
+    form: { name: '', event_type: '', start_date: '', end_date: '', expected_impact_pct: null, zones_raw: '', notes: '' },
+
+    async init() {
+      await this.loadEvents();
+      this.loading = false;
+    },
+
+    async loadEvents() {
+      const res = await fetch('/api/events');
+      this.events = await res.json();
+    },
+
+    isUpcoming(ev) {
+      return ev.end_date >= new Date().toISOString().substring(0, 10);
+    },
+
+    async saveEvent() {
+      if (!this.form.name || !this.form.start_date || !this.form.end_date) return;
+      const payload = {
+        name: this.form.name,
+        event_type: this.form.event_type || null,
+        start_date: this.form.start_date,
+        end_date: this.form.end_date,
+        expected_impact_pct: this.form.expected_impact_pct || null,
+        zones_affected: this.form.zones_raw
+          ? this.form.zones_raw.split(',').map(z => z.trim()).filter(Boolean)
+          : null,
+        notes: this.form.notes || null,
+      };
+      await fetch('/api/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      this.form = { name: '', event_type: '', start_date: '', end_date: '', expected_impact_pct: null, zones_raw: '', notes: '' };
+      this.formOpen = false;
+      await this.loadEvents();
+    },
+
+    async deleteEvent(ev) {
+      if (!confirm(`Eliminare "${ev.name}"?`)) return;
+      await fetch(`/api/events/${ev.id}`, { method: 'DELETE' });
+      await this.loadEvents();
+    },
+  };
+}
+</script>
+{% endblock %}

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Gestione Affitti{% endblock %} — Airbnb Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .nav-link { @apply text-sm font-medium text-gray-600 hover:text-blue-600 px-3 py-1 rounded-md hover:bg-blue-50 transition; }
+    .nav-link.active { @apply text-blue-600 bg-blue-50; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen text-gray-900">
+
+  <!-- Navbar -->
+  <nav class="bg-white border-b border-gray-200 sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-6 py-3 flex items-center gap-2">
+      <a href="/" class="font-bold text-blue-600 text-lg mr-4">Airbnb Manager</a>
+      <a href="/" class="nav-link {% block nav_dashboard %}{% endblock %}">Dashboard</a>
+      <a href="/competitor" class="nav-link {% block nav_competitor %}{% endblock %}">Competitor</a>
+      <a href="/sessions" class="nav-link {% block nav_sessions %}{% endblock %}">Sessioni</a>
+      <a href="/events" class="nav-link {% block nav_events %}{% endblock %}">Eventi</a>
+    </div>
+  </nav>
+
+  <!-- Content -->
+  <main class="max-w-7xl mx-auto px-6 py-8">
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}Competitor{% endblock %}
+{% block nav_competitor %}active{% endblock %}
+
+{% block content %}
+<div x-data="competitorPage()" x-init="init()" x-cloak>
+
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">Analisi Competitor</h1>
+    <div class="flex gap-2 items-center">
+      <label class="text-sm text-gray-500">Zona:</label>
+      <select x-model="selectedZone" @change="filterData()"
+              class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <option value="">Tutte le zone</option>
+        <template x-for="z in zones" :key="z">
+          <option :value="z" x-text="z"></option>
+        </template>
+      </select>
+    </div>
+  </div>
+
+  <!-- KPI per zona -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+    <template x-for="kpi in zoneKpis" :key="kpi.zone">
+      <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-4 cursor-pointer"
+           :class="selectedZone === kpi.zone ? 'border-blue-300 ring-1 ring-blue-300' : ''"
+           @click="selectedZone = kpi.zone; filterData()">
+        <p class="text-xs text-gray-400 mb-1" x-text="kpi.zone"></p>
+        <p class="text-2xl font-bold text-blue-600" x-text="'€' + kpi.avg"></p>
+        <p class="text-xs text-gray-400 mt-1" x-text="'€' + kpi.min + ' – €' + kpi.max"></p>
+      </div>
+    </template>
+  </div>
+
+  <!-- Grafico trend -->
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-8">
+    <h2 class="text-lg font-semibold mb-4" x-text="selectedZone ? 'Trend: ' + selectedZone : 'Trend per zona'"></h2>
+    <template x-if="filtered.length === 0">
+      <p class="text-center text-gray-400 py-10 text-sm">Nessun dato disponibile.</p>
+    </template>
+    <template x-if="filtered.length > 0">
+      <canvas id="compChart" height="80"></canvas>
+    </template>
+  </div>
+
+  <!-- Tabella snapshot -->
+  <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+    <h2 class="text-lg font-semibold mb-4">Ultimi snapshot</h2>
+    <template x-if="filtered.length === 0">
+      <p class="text-center text-gray-400 py-8 text-sm">Nessun dato.</p>
+    </template>
+    <template x-if="filtered.length > 0">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-xs text-gray-400 border-b border-gray-100">
+              <th class="text-left pb-2">Data</th>
+              <th class="text-left pb-2">Zona</th>
+              <th class="text-right pb-2">Media</th>
+              <th class="text-right pb-2">Min</th>
+              <th class="text-right pb-2">Max</th>
+              <th class="text-right pb-2">Mediana</th>
+              <th class="text-right pb-2">Campioni</th>
+              <th class="text-right pb-2">Fonte</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="s in filtered" :key="s.id">
+              <tr class="border-b border-gray-50 hover:bg-gray-50">
+                <td class="py-2 text-gray-500" x-text="s.snapshot_date"></td>
+                <td class="py-2">
+                  <span class="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full" x-text="s.zone"></span>
+                </td>
+                <td class="py-2 text-right font-semibold text-blue-600" x-text="'€' + s.avg_price"></td>
+                <td class="py-2 text-right text-gray-400" x-text="'€' + s.min_price"></td>
+                <td class="py-2 text-right text-gray-400" x-text="'€' + s.max_price"></td>
+                <td class="py-2 text-right text-gray-400" x-text="s.median_price ? '€' + s.median_price : '—'"></td>
+                <td class="py-2 text-right text-gray-400" x-text="s.sample_count"></td>
+                <td class="py-2 text-right text-gray-300 text-xs" x-text="s.source"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </template>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function competitorPage() {
+  return {
+    snapshots: [],
+    filtered: [],
+    zones: [],
+    zoneKpis: [],
+    selectedZone: '',
+    chart: null,
+
+    async init() {
+      const [snapsRes, zonesRes] = await Promise.all([
+        fetch('/api/competitor/snapshots?limit=60'),
+        fetch('/api/competitor/zones'),
+      ]);
+      this.snapshots = await snapsRes.json();
+      this.zones = await zonesRes.json();
+      this.computeKpis();
+      this.filterData();
+    },
+
+    computeKpis() {
+      const byZone = {};
+      for (const s of this.snapshots) {
+        if (!byZone[s.zone]) byZone[s.zone] = [];
+        byZone[s.zone].push(s);
+      }
+      this.zoneKpis = Object.entries(byZone).map(([zone, snaps]) => {
+        const latest = snaps[0];
+        return { zone, avg: latest.avg_price, min: latest.min_price, max: latest.max_price };
+      });
+    },
+
+    filterData() {
+      this.filtered = this.selectedZone
+        ? this.snapshots.filter(s => s.zone === this.selectedZone)
+        : this.snapshots;
+      this.$nextTick(() => this.buildChart());
+    },
+
+    buildChart() {
+      const ctx = document.getElementById('compChart');
+      if (!ctx || this.filtered.length === 0) return;
+      if (this.chart) this.chart.destroy();
+
+      // Raggruppa per zona e ordina per data
+      const byZone = {};
+      for (const s of this.filtered) {
+        if (!byZone[s.zone]) byZone[s.zone] = [];
+        byZone[s.zone].push(s);
+      }
+      for (const z in byZone) byZone[z].sort((a, b) => a.snapshot_date.localeCompare(b.snapshot_date));
+
+      const colors = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2'];
+      const datasets = Object.entries(byZone).map(([zone, snaps], i) => ({
+        label: zone,
+        data: snaps.map(s => ({ x: s.snapshot_date, y: s.avg_price })),
+        borderColor: colors[i % colors.length],
+        backgroundColor: 'transparent',
+        tension: 0.3,
+        pointRadius: 3,
+      }));
+
+      this.chart = new Chart(ctx, {
+        type: 'line',
+        data: { datasets },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'top' } },
+          scales: {
+            x: { type: 'category' },
+            y: { beginAtZero: false, ticks: { callback: v => '€' + v } },
+          },
+        },
+      });
+    },
+  };
+}
+</script>
+{% endblock %}
