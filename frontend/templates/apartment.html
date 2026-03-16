@@ -179,6 +179,11 @@
                    class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
           </div>
           <div>
+            <label class="text-sm text-gray-500 block mb-1">Beds24 Room ID</label>
+            <input type="text" x-model="editForm.beds24_id" placeholder="es. 317771"
+                   class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
             <label class="text-sm text-gray-500 block mb-1">Note</label>
             <textarea x-model="editForm.notes" rows="2"
                       class="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
@@ -281,7 +286,7 @@ function aptDetail(aptId) {
     async loadApt() {
       const res = await fetch(`/api/apartments/${this.aptId}`);
       this.apt = await res.json();
-      this.editForm = { base_price: this.apt.base_price, min_price: this.apt.min_price, max_price: this.apt.max_price, notes: this.apt.notes };
+      this.editForm = { base_price: this.apt.base_price, min_price: this.apt.min_price, max_price: this.apt.max_price, notes: this.apt.notes, beds24_id: this.apt.beds24_id };
     },
 
     async loadHistory() {

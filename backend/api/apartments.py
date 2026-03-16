@@ -15,6 +15,7 @@ class ApartmentUpdate(BaseModel):
     min_price: Optional[float] = None
     max_price: Optional[float] = None
     notes: Optional[str] = None
+    beds24_id: Optional[str] = None
 
 
 def _apt(a: models.Apartment) -> dict:
