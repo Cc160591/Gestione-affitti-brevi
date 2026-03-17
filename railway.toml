@@ -3,6 +3,7 @@ builder = "nixpacks"
 
 [deploy]
 startCommand = "python -m backend.main"
+preDeployCommand = "python -m alembic upgrade head && python -m scripts.seed_apartments"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"
