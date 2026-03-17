@@ -5,7 +5,7 @@ uvicorn[standard]==0.30.6
 # Database
 sqlalchemy==2.0.35
 alembic==1.13.3
-psycopg2-binary==2.9.9
+psycopg2-binary==2.9.10
 
 # AI
 openai==1.51.0
