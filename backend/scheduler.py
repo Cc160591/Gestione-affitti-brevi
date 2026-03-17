@@ -15,20 +15,22 @@ DAILY_MINUTE = int(os.getenv("DAILY_ANALYSIS_MINUTE", "0"))
 def create_scheduler(application) -> AsyncIOScheduler:
     """
     Crea lo scheduler e registra il job mattutino.
-    application: l'istanza del Telegram Application (per accesso al bot).
+    application: l'istanza del Telegram Application (per accesso al bot), oppure None.
     """
-    from .telegram.bot import morning_trigger
-
     scheduler = AsyncIOScheduler(timezone="Europe/Rome")
 
-    scheduler.add_job(
-        morning_trigger,
-        trigger=CronTrigger(hour=DAILY_HOUR, minute=DAILY_MINUTE, timezone="Europe/Rome"),
-        args=[application],
-        id="morning_pricing",
-        name="Analisi prezzi mattutina",
-        replace_existing=True,
-    )
+    if application is not None:
+        from .telegram.bot import morning_trigger
+        scheduler.add_job(
+            morning_trigger,
+            trigger=CronTrigger(hour=DAILY_HOUR, minute=DAILY_MINUTE, timezone="Europe/Rome"),
+            args=[application],
+            id="morning_pricing",
+            name="Analisi prezzi mattutina",
+            replace_existing=True,
+        )
+        logger.info(f"Scheduler configurato: analisi ogni giorno alle {DAILY_HOUR:02d}:{DAILY_MINUTE:02d}")
+    else:
+        logger.info("Scheduler avviato senza job Telegram (bot disabilitato)")
 
-    logger.info(f"Scheduler configurato: analisi ogni giorno alle {DAILY_HOUR:02d}:{DAILY_MINUTE:02d}")
     return scheduler

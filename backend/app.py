@@ -18,45 +18,58 @@ WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "airbnb-pricing-secret")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from .telegram.bot import create_application
     from .scheduler import create_scheduler
 
-    tg_app = create_application()
-    app.state.tg_app = tg_app
+    telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    tg_app = None
+
+    if telegram_token:
+        from .telegram.bot import create_application
+        tg_app = create_application()
+        app.state.tg_app = tg_app
+
+        await tg_app.initialize()
+        await tg_app.start()
+
+        webhook_url = os.getenv("WEBHOOK_URL")
+        if webhook_url:
+            await tg_app.bot.set_webhook(
+                url=f"{webhook_url}/webhook/telegram",
+                secret_token=WEBHOOK_SECRET,
+            )
+            logger.info(f"Webhook impostato: {webhook_url}/webhook/telegram")
+        else:
+            await tg_app.updater.start_polling(drop_pending_updates=True)
+            logger.info("Bot Telegram avviato in modalità polling (sviluppo)")
+    else:
+        logger.info("TELEGRAM_BOT_TOKEN non configurato — bot disabilitato")
 
     scheduler = create_scheduler(tg_app)
     scheduler.start()
     logger.info("Scheduler avviato")
 
-    await tg_app.initialize()
-    await tg_app.start()
-
-    # Imposta webhook se URL configurato, altrimenti usa polling (sviluppo locale)
-    webhook_url = os.getenv("WEBHOOK_URL")
-    if webhook_url:
-        await tg_app.bot.set_webhook(
-            url=f"{webhook_url}/webhook/telegram",
-            secret_token=WEBHOOK_SECRET,
-        )
-        logger.info(f"Webhook impostato: {webhook_url}/webhook/telegram")
-    else:
-        await tg_app.updater.start_polling(drop_pending_updates=True)
-        logger.info("Bot Telegram avviato in modalità polling (sviluppo)")
-
     yield
 
     # Shutdown
-    if webhook_url:
-        await tg_app.bot.delete_webhook()
-    else:
-        await tg_app.updater.stop()
+    if tg_app:
+        webhook_url = os.getenv("WEBHOOK_URL")
+        if webhook_url:
+            await tg_app.bot.delete_webhook()
+        else:
+            await tg_app.updater.stop()
+        await tg_app.stop()
 
     scheduler.shutdown()
-    await tg_app.stop()
     logger.info("Shutdown completato")
 
 
 app = FastAPI(title="Airbnb Pricing Manager", lifespan=lifespan)
+
+
+# ── Health check ───────────────────────────────────────────
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 
 # ── Webhook Telegram ───────────────────────────────────────
