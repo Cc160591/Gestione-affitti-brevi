@@ -7,9 +7,12 @@ Quando si attiva AirDNA, basta sostituire _fetch_from_airdna().
 import httpx
 import random
 import os
+import logging
 from datetime import date
 from sqlalchemy.orm import Session
 from ..db import crud
+
+logger = logging.getLogger(__name__)
 
 
 # Prezzi base realistici per zona Milano (€/notte)
@@ -48,7 +51,11 @@ async def get_competitor_prices(db: Session, zone: str, target_date: date) -> di
         }
 
     if AIRDNA_API_KEY:
-        data = await _fetch_from_airdna(zone, target_date)
+        try:
+            data = await _fetch_from_airdna(zone, target_date)
+        except Exception as e:
+            logger.warning("AirDNA fallito (%s), uso mock per zona=%s data=%s", e, zone, target_date)
+            data = _mock_competitor_prices(zone, target_date)
     else:
         data = _mock_competitor_prices(zone, target_date)
 
