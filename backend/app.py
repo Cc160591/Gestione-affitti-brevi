@@ -72,6 +72,17 @@ async def health():
     return {"status": "ok"}
 
 
+# ── Seed (one-time, protetto da token) ─────────────────────
+@app.post("/admin/seed")
+async def seed_db(request: Request):
+    secret = request.headers.get("X-Admin-Token")
+    if secret != os.getenv("ADMIN_TOKEN", ""):
+        return Response(status_code=403)
+    from scripts.seed_apartments import seed
+    seed()
+    return {"status": "seeded"}
+
+
 # ── Webhook Telegram ───────────────────────────────────────
 @app.post("/webhook/telegram")
 async def telegram_webhook(request: Request):
@@ -98,6 +109,7 @@ from .api.dashboard import router as dashboard_router
 from .api.competitor import router as competitor_router
 from .api.sessions import router as sessions_router
 from .api.events import router as events_router
+from .api.pricing import router as pricing_router
 from .web.router import router as web_router
 
 app.include_router(apartments_router)
@@ -106,6 +118,7 @@ app.include_router(dashboard_router)
 app.include_router(competitor_router)
 app.include_router(sessions_router)
 app.include_router(events_router)
+app.include_router(pricing_router)
 app.include_router(web_router)
 
 # ── Static files ───────────────────────────────────────────

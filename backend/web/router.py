@@ -34,3 +34,8 @@ async def sessions(request: Request):
 @router.get("/events", response_class=HTMLResponse)
 async def events(request: Request):
     return templates.TemplateResponse("events.html", {"request": request})
+
+
+@router.get("/pricing-analysis", response_class=HTMLResponse)
+async def pricing_analysis(request: Request):
+    return templates.TemplateResponse("pricing_analysis.html", {"request": request})
