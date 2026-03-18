@@ -6,11 +6,13 @@ per ogni appartamento su un range di date.
 import math
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db import crud, models
+from backend.integrations.beds24 import update_price as beds24_update_price
 
 router = APIRouter(prefix="/api/pricing", tags=["pricing"])
 
@@ -136,6 +138,7 @@ def get_pricing_analysis(
             "current_price": apt.current_price,
             "min_price": apt.min_price,
             "max_price": apt.max_price,
+            "beds24_id": apt.beds24_id,
             "dates": dates_data,
         })
 
@@ -143,4 +146,68 @@ def get_pricing_analysis(
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
         "apartments": result,
+    }
+
+
+# ─────────────────────────────────────────
+# APPLICA PREZZO SU BEDS24 / AIRBNB
+# ─────────────────────────────────────────
+
+class ApplyPriceRequest(BaseModel):
+    apartment_id: int
+    date: str          # YYYY-MM-DD
+    price: float
+    market_min: float | None = None
+    market_max: float | None = None
+
+
+@router.post("/apply")
+async def apply_price(body: ApplyPriceRequest, db: Session = Depends(get_db)):
+    """
+    Applica il prezzo consigliato su Beds24 (→ Airbnb) per un appartamento e una data.
+    Salva la decisione in price_history con was_autonomous=False.
+    """
+    apt = crud.get_apartment(db, body.apartment_id)
+    if not apt:
+        raise HTTPException(status_code=404, detail="Appartamento non trovato")
+
+    if not apt.beds24_id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"beds24_id non configurato per '{apt.name}'. Aggiungilo nella pagina appartamento."
+        )
+
+    target_date = date.fromisoformat(body.date)
+
+    # Chiama Beds24
+    success = await beds24_update_price(apt.beds24_id, target_date, body.price)
+    if not success:
+        raise HTTPException(status_code=502, detail="Beds24: aggiornamento fallito. Controlla i log.")
+
+    # Salva in price_history
+    record = models.PriceHistory(
+        apartment_id=body.apartment_id,
+        session_id=None,
+        price_date=target_date,
+        price_before=apt.current_price,
+        proposed_price=body.price,
+        approved_price=body.price,
+        applied_price=body.price,
+        competitor_min=body.market_min,
+        competitor_max=body.market_max,
+        was_autonomous=False,
+    )
+    db.add(record)
+
+    # Aggiorna current_price solo se è la data di oggi
+    if target_date == date.today():
+        crud.update_apartment_current_price(db, body.apartment_id, body.price)
+
+    db.commit()
+
+    return {
+        "status": "applied",
+        "apartment": apt.name,
+        "date": body.date,
+        "price": body.price,
     }

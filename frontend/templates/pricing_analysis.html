@@ -44,7 +44,7 @@
     </div>
   </div>
 
-  <!-- Stato caricamento / errore -->
+  <!-- Stato caricamento / errore globale -->
   <div x-show="loading" class="flex justify-center py-16">
     <svg class="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -92,6 +92,20 @@
             <span class="text-gray-500">Max configurato</span>
             <span class="ml-2 font-medium text-gray-800" x-text="'€' + apt.max_price"></span>
           </div>
+          <!-- Badge beds24 -->
+          <div class="bg-white rounded-lg border px-4 py-3 text-sm"
+               :class="apt.has_beds24 ? 'border-green-200' : 'border-orange-200'">
+            <span class="text-gray-500">Beds24</span>
+            <span class="ml-2 font-medium"
+                  :class="apt.has_beds24 ? 'text-green-600' : 'text-orange-500'"
+                  x-text="apt.has_beds24 ? 'Collegato' : 'Non configurato'"></span>
+          </div>
+        </div>
+
+        <!-- Avviso beds24 non configurato -->
+        <div x-show="!apt.has_beds24"
+             class="mb-4 bg-orange-50 border border-orange-200 text-orange-700 rounded-lg px-4 py-3 text-sm">
+          Beds24 non configurato per questo appartamento. Imposta il <strong>beds24_id</strong> nella pagina appartamento per abilitare l'approvazione.
         </div>
 
         <!-- Tabella prezzi -->
@@ -105,6 +119,7 @@
                   <th class="text-right px-4 py-3 font-medium text-gray-600">Max mercato</th>
                   <th class="text-right px-4 py-3 font-medium text-gray-600">Prezzo consigliato</th>
                   <th class="px-4 py-3 font-medium text-gray-600">Note</th>
+                  <th class="px-4 py-3 font-medium text-gray-600 text-center">Approva</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-100">
@@ -141,10 +156,53 @@
                     <!-- Note eventi -->
                     <td class="px-4 py-2.5 text-xs text-amber-700">
                       <template x-if="row.has_event">
-                        <span>
-                          🎯 <span x-text="row.events.join(', ')"></span>
-                        </span>
+                        <span>🎯 <span x-text="row.events.join(', ')"></span></span>
                       </template>
+                    </td>
+
+                    <!-- Bottone Approva -->
+                    <td class="px-4 py-2.5 text-center">
+
+                      <!-- Non applicabile: niente prezzo o no beds24 -->
+                      <span
+                        x-show="row.suggested_price === null || !apt.has_beds24"
+                        class="text-gray-300 text-xs">—</span>
+
+                      <!-- Stato idle: mostra bottone -->
+                      <button
+                        x-show="row.suggested_price !== null && apt.has_beds24 && row._status === 'idle'"
+                        @click="applyPrice(apt, row)"
+                        class="bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-3 py-1 rounded-md transition"
+                      >
+                        Approva
+                      </button>
+
+                      <!-- Stato loading: spinner -->
+                      <span x-show="row._status === 'loading'">
+                        <svg class="animate-spin h-4 w-4 text-blue-500 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                        </svg>
+                      </span>
+
+                      <!-- Stato applied: checkmark -->
+                      <span
+                        x-show="row._status === 'applied'"
+                        class="inline-flex items-center gap-1 text-green-600 text-xs font-medium"
+                      >
+                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        Applicato
+                      </span>
+
+                      <!-- Stato error: messaggio -->
+                      <span
+                        x-show="row._status === 'error'"
+                        class="text-red-500 text-xs"
+                        x-text="row._error || 'Errore'"
+                      ></span>
+
                     </td>
                   </tr>
                 </template>
@@ -209,12 +267,45 @@ function pricingAnalysis() {
         );
         if (!res.ok) throw new Error(`Errore server: ${res.status}`);
         const data = await res.json();
-        this.apartments = data.apartments;
+        // Aggiunge stato per ogni riga e flag beds24
+        this.apartments = data.apartments.map(apt => ({
+          ...apt,
+          has_beds24: !!apt.beds24_id,
+          dates: apt.dates.map(row => ({ ...row, _status: 'idle', _error: null })),
+        }));
         this.activeTab = 0;
       } catch (e) {
         this.error = e.message;
       } finally {
         this.loading = false;
+      }
+    },
+
+    async applyPrice(apt, row) {
+      row._status = 'loading';
+      row._error = null;
+      try {
+        const res = await fetch('/api/pricing/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            apartment_id: apt.id,
+            date: row.date,
+            price: row.suggested_price,
+            market_min: row.market_min,
+            market_max: row.market_max,
+          }),
+        });
+        const body = await res.json();
+        if (!res.ok) {
+          row._status = 'error';
+          row._error = body.detail || `Errore ${res.status}`;
+        } else {
+          row._status = 'applied';
+        }
+      } catch (e) {
+        row._status = 'error';
+        row._error = e.message;
       }
     },
 
