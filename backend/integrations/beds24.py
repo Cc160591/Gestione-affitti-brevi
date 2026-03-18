@@ -28,34 +28,40 @@ async def update_price(room_id: str, target_date: date, price: float) -> bool:
     """
     Aggiorna il prezzo di un appartamento su Beds24 per una data specifica.
     Beds24 sincronizza automaticamente con Airbnb.
+    Lancia ValueError con il body della risposta se Beds24 restituisce errore.
     """
     if _is_mock():
         logger.info(f"[MOCK] Beds24: roomId={room_id} → €{price} per {target_date}")
         return True
 
     date_str = str(target_date)
+    payload = [
+        {
+            "roomId": int(room_id),
+            "calendar": [
+                {
+                    "from": date_str,
+                    "to": date_str,
+                    "price1": price,
+                }
+            ],
+        }
+    ]
+    logger.info(f"Beds24 request: POST {BEDS24_BASE_URL}/inventory/rooms/calendar payload={payload}")
+
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{BEDS24_BASE_URL}/inventory/rooms/calendar",
             headers=_headers(),
-            json=[
-                {
-                    "roomId": int(room_id),
-                    "calendar": [
-                        {
-                            "from": date_str,
-                            "to": date_str,
-                            "price1": price,
-                        }
-                    ],
-                }
-            ],
+            json=payload,
         )
+        logger.info(f"Beds24 response: status={response.status_code} body={response.text}")
         if response.status_code == 200:
             return True
         else:
-            logger.error(f"Beds24: errore update roomId={room_id}: {response.text}")
-            return False
+            raise ValueError(
+                f"Beds24 HTTP {response.status_code}: {response.text}"
+            )
 
 
 async def update_prices_bulk(

@@ -202,9 +202,10 @@ async def apply_price(body: ApplyPriceRequest, db: Session = Depends(get_db)):
     target_date = date.fromisoformat(body.date)
 
     # Chiama Beds24
-    success = await beds24_update_price(apt.beds24_id, target_date, body.price)
-    if not success:
-        raise HTTPException(status_code=502, detail="Beds24: aggiornamento fallito. Controlla i log.")
+    try:
+        await beds24_update_price(apt.beds24_id, target_date, body.price)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
     # Salva in price_history
     record = models.PriceHistory(
