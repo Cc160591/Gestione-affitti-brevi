@@ -93,6 +93,35 @@ async def update_prices(request: Request):
     return {"status": "prices updated"}
 
 
+@app.get("/admin/test-beds24")
+async def test_beds24():
+    """Debug: prova tutte le varianti di autenticazione Beds24 e restituisce i risultati."""
+    import httpx
+    key = os.getenv("BEDS24_API_KEY", "")
+    if not key:
+        return {"error": "BEDS24_API_KEY non impostata"}
+
+    results = {}
+    payloads = {
+        "refreshToken": {"refreshToken": key},
+        "apiKey":       {"apiKey": key},
+        "inviteCode":   {"inviteCode": key},
+    }
+
+    async with httpx.AsyncClient() as client:
+        for name, payload in payloads.items():
+            try:
+                r = await client.post(
+                    "https://api.beds24.com/v2/authentication/setup",
+                    json=payload,
+                )
+                results[name] = {"status": r.status_code, "body": r.json()}
+            except Exception as e:
+                results[name] = {"error": str(e)}
+
+    return results
+
+
 # ── Webhook Telegram ───────────────────────────────────────
 @app.post("/webhook/telegram")
 async def telegram_webhook(request: Request):
