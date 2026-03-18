@@ -4,9 +4,13 @@ Calcola prezzo minimo/massimo competitor e prezzo consigliato (server-side, no A
 per ogni appartamento su un range di date.
 """
 import math
+import traceback
+import logging
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -63,6 +67,15 @@ async def get_pricing_analysis(
     end_date: date = Query(default=None),
     db: Session = Depends(get_db),
 ):
+    try:
+        return await _pricing_analysis_inner(start_date, end_date, db)
+    except Exception as e:
+        tb = traceback.format_exc()
+        logger.error("Pricing analysis error:\n%s", tb)
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}\n\n{tb}")
+
+
+async def _pricing_analysis_inner(start_date, end_date, db):
     if not start_date:
         start_date = date.today()
     if not end_date:
