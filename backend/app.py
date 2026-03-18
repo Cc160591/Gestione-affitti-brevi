@@ -93,6 +93,28 @@ async def update_prices(request: Request):
     return {"status": "prices updated"}
 
 
+@app.get("/admin/beds24-setup")
+async def beds24_setup(invite_code: str):
+    """
+    Scambia un invite code Beds24 con un refresh token permanente.
+    Uso: /admin/beds24-setup?invite_code=XXXXXX
+    """
+    import httpx
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            "https://api.beds24.com/v2/authentication/setup",
+            json={"inviteCode": invite_code},
+        )
+        data = r.json()
+        if r.status_code == 200 and data.get("refreshToken"):
+            return {
+                "status": "ok",
+                "refresh_token": data["refreshToken"],
+                "istruzioni": "Salva 'refresh_token' come BEDS24_API_KEY su Railway e riavvia il servizio."
+            }
+        return {"status": "errore", "response": data}
+
+
 @app.get("/admin/test-beds24")
 async def test_beds24():
     """Debug: prova tutte le varianti di autenticazione Beds24 e restituisce i risultati."""
