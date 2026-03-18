@@ -10,55 +10,20 @@ Autenticazione a due step (API v2):
 import httpx
 import os
 import logging
-import time
 from datetime import date
 
 logger = logging.getLogger(__name__)
 
 BEDS24_BASE_URL = "https://api.beds24.com/v2"
-BEDS24_REFRESH_TOKEN = os.getenv("BEDS24_API_KEY")
-
-# Cache access token in memoria (valido ~24h)
-_access_token: str | None = None
-_token_expires_at: float = 0
+BEDS24_API_KEY = os.getenv("BEDS24_API_KEY")  # Long life token da Beds24 → Account Access → Invite Codes
 
 
 def _is_mock() -> bool:
-    return not BEDS24_REFRESH_TOKEN
+    return not BEDS24_API_KEY
 
 
-async def _get_access_token() -> str:
-    """
-    Scambia il refresh token con un access token JWT.
-    Il token viene cachato in memoria per evitare richieste ripetute.
-    """
-    global _access_token, _token_expires_at
-
-    # Riusa il token se ancora valido (con 5 minuti di margine)
-    if _access_token and time.time() < _token_expires_at - 300:
-        return _access_token
-
-    logger.info("Beds24: richiesta nuovo access token")
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{BEDS24_BASE_URL}/authentication/setup",
-            json={"refreshToken": BEDS24_REFRESH_TOKEN},
-        )
-        if response.status_code != 200:
-            raise ValueError(
-                f"Beds24 auth fallita HTTP {response.status_code}: {response.text}"
-            )
-        data = response.json()
-        _access_token = data.get("token")
-        expires_in = data.get("expiresIn", 86400)  # default 24h
-        _token_expires_at = time.time() + expires_in
-        logger.info("Beds24: access token ottenuto, scade in %ds", expires_in)
-        return _access_token
-
-
-async def _headers() -> dict:
-    token = await _get_access_token()
-    return {"token": token, "Content-Type": "application/json"}
+def _headers() -> dict:
+    return {"token": BEDS24_API_KEY, "Content-Type": "application/json"}
 
 
 async def update_price(room_id: str, target_date: date, price: float) -> bool:
@@ -88,7 +53,7 @@ async def update_price(room_id: str, target_date: date, price: float) -> bool:
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{BEDS24_BASE_URL}/inventory/rooms/calendar",
-            headers=await _headers(),
+            headers=_headers(),
             json=payload,
         )
         logger.info(f"Beds24 response: status={response.status_code} body={response.text}")
@@ -125,7 +90,7 @@ async def update_prices_bulk(
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{BEDS24_BASE_URL}/inventory/rooms/calendar",
-            headers=await _headers(),
+            headers=_headers(),
             json=payload,
         )
         if response.status_code == 200:
@@ -144,7 +109,7 @@ async def get_current_prices(room_ids: list[str], target_date: date) -> dict[str
     async with httpx.AsyncClient() as client:
         response = await client.get(
             f"{BEDS24_BASE_URL}/inventory/rooms/calendar",
-            headers=await _headers(),
+            headers=_headers(),
             params={
                 "roomIds": ",".join(room_ids),
                 "startDate": date_str,
@@ -172,7 +137,7 @@ async def get_properties() -> list[dict]:
     async with httpx.AsyncClient() as client:
         response = await client.get(
             f"{BEDS24_BASE_URL}/properties",
-            headers=await _headers(),
+            headers=_headers(),
             params={"includeAllRooms": "true"},
         )
         if response.status_code == 200:
