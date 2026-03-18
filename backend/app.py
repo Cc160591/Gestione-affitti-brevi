@@ -83,6 +83,16 @@ async def seed_db(request: Request):
     return {"status": "seeded"}
 
 
+@app.post("/admin/update-prices")
+async def update_prices(request: Request):
+    secret = request.headers.get("X-Admin-Token")
+    if secret != os.getenv("ADMIN_TOKEN", ""):
+        return Response(status_code=403)
+    from scripts.seed_apartments import update_prices as _update
+    _update()
+    return {"status": "prices updated"}
+
+
 # ── Webhook Telegram ───────────────────────────────────────
 @app.post("/webhook/telegram")
 async def telegram_webhook(request: Request):

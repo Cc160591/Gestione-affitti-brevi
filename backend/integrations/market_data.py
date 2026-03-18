@@ -22,6 +22,8 @@ ZONE_BASE_PRICES = {
     "Garibaldi":      {"min": 80,  "max": 190, "avg": 125},
     "Porta Venezia":  {"min": 75,  "max": 170, "avg": 110},
     "Città Studi":    {"min": 60,  "max": 130, "avg": 85},
+    "CityLife":       {"min": 80,  "max": 200, "avg": 125},
+    "Corso Como":     {"min": 90,  "max": 210, "avg": 135},
 }
 
 AIRDNA_API_KEY = os.getenv("AIRDNA_API_KEY")

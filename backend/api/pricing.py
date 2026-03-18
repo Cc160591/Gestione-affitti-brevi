@@ -78,27 +78,46 @@ async def get_pricing_analysis(
     apartments = crud.get_all_apartments(db)
     events_in_range = crud.get_upcoming_events(db, start_date, end_date)
 
-    result = []
-    for apt in apartments:
-        rules = crud.get_rules_for_apartment(db, apt.id)
+    # ── Pre-carica dati mercato per ogni (zona, data) unica ──────────────
+    # Fatto UNA VOLTA prima del loop appartamenti per evitare commit multipli
+    # che scadono gli oggetti SQLAlchemy in memoria.
+    zones = list({apt.zone for apt in apartments})
+    market_cache: dict[tuple, dict] = {}
+    current = start_date
+    while current <= end_date:
+        for zone in zones:
+            market_cache[(zone, current)] = await get_competitor_prices(db, zone, current)
+        current += timedelta(days=1)
 
+    # ── Calcola prezzi per appartamento usando la cache ──────────────────
+    # Snapshot dell'oggetto appartamento prima dei commit (già tutti in cache)
+    apt_data = [
+        {
+            "id": apt.id, "name": apt.name, "zone": apt.zone,
+            "current_price": apt.current_price, "min_price": apt.min_price,
+            "max_price": apt.max_price, "beds24_id": apt.beds24_id,
+            "rules": crud.get_rules_for_apartment(db, apt.id),
+        }
+        for apt in apartments
+    ]
+
+    result = []
+    for apt in apt_data:
         dates_data = []
         current = start_date
         while current <= end_date:
-            # get_competitor_prices: legge da DB se esiste, altrimenti genera mock e salva
-            market = await get_competitor_prices(db, apt.zone, current)
+            market = market_cache[(apt["zone"], current)]
             market_min = market["min_price"]
             market_max = market["max_price"]
 
-            # Eventi attivi in questa data
             active_events = [
                 e for e in events_in_range
                 if e.start_date <= current <= e.end_date
             ]
 
             suggested = _apply_rules(
-                market_min, rules, current,
-                active_events, apt.min_price, apt.max_price
+                market_min, apt["rules"], current,
+                active_events, apt["min_price"], apt["max_price"]
             )
 
             dates_data.append({
@@ -112,13 +131,13 @@ async def get_pricing_analysis(
             current += timedelta(days=1)
 
         result.append({
-            "id": apt.id,
-            "name": apt.name,
-            "zone": apt.zone,
-            "current_price": apt.current_price,
-            "min_price": apt.min_price,
-            "max_price": apt.max_price,
-            "beds24_id": apt.beds24_id,
+            "id": apt["id"],
+            "name": apt["name"],
+            "zone": apt["zone"],
+            "current_price": apt["current_price"],
+            "min_price": apt["min_price"],
+            "max_price": apt["max_price"],
+            "beds24_id": apt["beds24_id"],
             "dates": dates_data,
         })
 
