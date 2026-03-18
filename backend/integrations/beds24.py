@@ -1,10 +1,10 @@
 """
-Integrazione Beds24 API v1 per aggiornamento prezzi su Airbnb.
-Documentazione: https://beds24.com/api/v2/ (API v1, URL storico)
+Integrazione Beds24 API v2 per aggiornamento prezzi su Airbnb.
+Documentazione: https://api.beds24.com/v2/
 
 Autenticazione:
-  BEDS24_API_KEY  = devKey  (Account → Account Access → API Key 1)
-  BEDS24_PROP_KEY = propKey (Marketplace → API Arrivals → Access Key)
+  BEDS24_API_KEY = long-life token (Beds24 → Account Access → Invite Codes → crea invite → usa il token)
+  Passato come header: token: <long_life_token>
 """
 import httpx
 import os
@@ -13,17 +13,16 @@ from datetime import date
 
 logger = logging.getLogger(__name__)
 
-BEDS24_V1_URL = "https://beds24.com/api/v2"
-BEDS24_DEV_KEY  = os.getenv("BEDS24_API_KEY")
-BEDS24_PROP_KEY = os.getenv("BEDS24_PROP_KEY")
+BEDS24_BASE_URL = "https://api.beds24.com/v2"
+BEDS24_API_KEY = os.getenv("BEDS24_API_KEY")  # Long life token
 
 
 def _is_mock() -> bool:
-    return not BEDS24_DEV_KEY or not BEDS24_PROP_KEY
+    return not BEDS24_API_KEY
 
 
-def _auth() -> dict:
-    return {"propKey": BEDS24_PROP_KEY, "devKey": BEDS24_DEV_KEY}
+def _headers() -> dict:
+    return {"token": BEDS24_API_KEY, "Content-Type": "application/json"}
 
 
 async def update_price(room_id: str, target_date: date, price: float) -> bool:
@@ -32,27 +31,23 @@ async def update_price(room_id: str, target_date: date, price: float) -> bool:
         return True
 
     date_str = str(target_date)
-    payload = {
-        "authentication": _auth(),
-        "data": [
-            {
-                "roomId": int(room_id),
-                "firstNight": date_str,
-                "lastNight": date_str,
-                "price1": price,
-            }
-        ],
-    }
+    payload = [
+        {
+            "roomId": int(room_id),
+            "calendar": [{"from": date_str, "to": date_str, "price1": price}],
+        }
+    ]
     logger.info(f"Beds24 update_price: roomId={room_id} date={date_str} price={price}")
 
     async with httpx.AsyncClient() as client:
-        r = await client.post(f"{BEDS24_V1_URL}/setprice", json=payload)
+        r = await client.post(
+            f"{BEDS24_BASE_URL}/inventory/rooms/calendar",
+            headers=_headers(),
+            json=payload,
+        )
         logger.info(f"Beds24 response: {r.status_code} {r.text}")
         if r.status_code == 200:
-            data = r.json()
-            if data.get("authentication") == "authenticated":
-                return True
-            raise ValueError(f"Beds24 autenticazione fallita: {data}")
+            return True
         raise ValueError(f"Beds24 HTTP {r.status_code}: {r.text}")
 
 
@@ -60,20 +55,21 @@ async def update_prices_bulk(updates: list[dict]) -> dict[str, bool]:
     if _is_mock():
         return {u["beds24_id"]: True for u in updates}
 
-    data = [
+    payload = [
         {
             "roomId": int(u["beds24_id"]),
-            "firstNight": str(u["date"]),
-            "lastNight": str(u["date"]),
-            "price1": u["price"],
+            "calendar": [{"from": str(u["date"]), "to": str(u["date"]), "price1": u["price"]}],
         }
         for u in updates
     ]
-    payload = {"authentication": _auth(), "data": data}
 
     async with httpx.AsyncClient() as client:
-        r = await client.post(f"{BEDS24_V1_URL}/setprice", json=payload)
-        if r.status_code == 200 and r.json().get("authentication") == "authenticated":
+        r = await client.post(
+            f"{BEDS24_BASE_URL}/inventory/rooms/calendar",
+            headers=_headers(),
+            json=payload,
+        )
+        if r.status_code == 200:
             return {u["beds24_id"]: True for u in updates}
         raise ValueError(f"Beds24 HTTP {r.status_code}: {r.text}")
 
@@ -83,29 +79,32 @@ async def get_current_prices(room_ids: list[str], target_date: date) -> dict[str
         return {room_id: 0.0 for room_id in room_ids}
 
     date_str = str(target_date)
-    payload = {
-        "authentication": _auth(),
-        "data": {"roomId": [int(r) for r in room_ids], "firstNight": date_str, "lastNight": date_str},
-    }
     async with httpx.AsyncClient() as client:
-        r = await client.post(f"{BEDS24_V1_URL}/getprice", json=payload)
-        if r.status_code != 200:
-            return {}
-        result = {}
-        for room in r.json().get("data", []):
-            rid = str(room.get("roomId"))
-            prices = room.get("prices", [])
-            if prices:
-                result[rid] = prices[0].get("price1", 0.0)
-        return result
+        r = await client.get(
+            f"{BEDS24_BASE_URL}/inventory/rooms/calendar",
+            headers=_headers(),
+            params={"roomIds": ",".join(room_ids), "startDate": date_str, "endDate": date_str},
+        )
+        if r.status_code == 200:
+            result = {}
+            for room in r.json().get("data", []):
+                calendar = room.get("calendar", [])
+                if calendar:
+                    result[str(room["roomId"])] = calendar[0].get("price1", 0.0)
+            return result
+        return {}
 
 
 async def get_properties() -> list[dict]:
     if _is_mock():
         return []
-    payload = {"authentication": _auth()}
+
     async with httpx.AsyncClient() as client:
-        r = await client.post(f"{BEDS24_V1_URL}/getproperties", json=payload)
+        r = await client.get(
+            f"{BEDS24_BASE_URL}/properties",
+            headers=_headers(),
+            params={"includeAllRooms": "true"},
+        )
         if r.status_code == 200:
             return r.json().get("data", [])
         return []
