@@ -20,38 +20,36 @@ router = APIRouter(prefix="/api/pricing", tags=["pricing"])
 
 def _apply_rules(
     base_price: float,
-    rules: list,
+    rules: list,   # lista di dict con chiavi: rule_type, adjustment_pct, fixed_value, condition
     target_date: date,
     active_events: list,
     apt_min: float,
     apt_max: float,
 ) -> float:
-    """
-    Applica le pricing_rules attive al prezzo base (market_min).
-    Regole applicate in ordine di priorità.
-    Arrotondamento finale per eccesso (math.ceil).
-    """
     price = base_price
 
     for rule in rules:
-        if rule.rule_type == models.RuleType.percentage_above_market:
-            price *= 1 + rule.adjustment_pct / 100
+        rt = rule["rule_type"]
+        pct = rule["adjustment_pct"] or 0
 
-        elif rule.rule_type == models.RuleType.percentage_below_market:
-            price *= 1 - rule.adjustment_pct / 100
+        if rt == models.RuleType.percentage_above_market:
+            price *= 1 + pct / 100
 
-        elif rule.rule_type == models.RuleType.fixed_price and rule.fixed_value is not None:
-            price = rule.fixed_value
+        elif rt == models.RuleType.percentage_below_market:
+            price *= 1 - pct / 100
 
-        elif rule.rule_type == models.RuleType.event_boost and active_events:
-            price *= 1 + rule.adjustment_pct / 100
+        elif rt == models.RuleType.fixed_price and rule["fixed_value"] is not None:
+            price = rule["fixed_value"]
 
-        elif rule.rule_type == models.RuleType.last_minute:
-            cond = rule.condition or {}
+        elif rt == models.RuleType.event_boost and active_events:
+            price *= 1 + pct / 100
+
+        elif rt == models.RuleType.last_minute:
+            cond = rule["condition"] or {}
             days_before = cond.get("days_before", 3)
             days_until = (target_date - date.today()).days
             if 0 <= days_until <= days_before:
-                price *= 1 - abs(rule.adjustment_pct) / 100
+                price *= 1 - abs(pct) / 100
 
         # occupancy_based: skip — no dati occupancy in questa vista
 
@@ -65,23 +63,46 @@ async def get_pricing_analysis(
     end_date: date = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    """
-    Restituisce per ogni appartamento, per ogni data nel range:
-    - market_min / market_max  (da competitor_snapshots, generati on-demand se mancanti)
-    - suggested_price          (calcolato server-side con pricing_rules)
-    """
     if not start_date:
         start_date = date.today()
     if not end_date:
         end_date = start_date + timedelta(days=29)
 
     apartments = crud.get_all_apartments(db)
-    events_in_range = crud.get_upcoming_events(db, start_date, end_date)
 
-    # ── Pre-carica dati mercato per ogni (zona, data) unica ──────────────
-    # Fatto UNA VOLTA prima del loop appartamenti per evitare commit multipli
-    # che scadono gli oggetti SQLAlchemy in memoria.
-    zones = list({apt.zone for apt in apartments})
+    # ── STEP 1: snapshot tutto come plain dict PRIMA di qualsiasi commit ──
+    # I db.commit() dentro get_competitor_prices scadono gli oggetti SQLAlchemy.
+    # Convertendo subito in dict evitiamo lazy-load falliti dopo i commit.
+    apt_snapshots = []
+    for apt in apartments:
+        rules_raw = crud.get_rules_for_apartment(db, apt.id)
+        apt_snapshots.append({
+            "id": apt.id,
+            "name": apt.name,
+            "zone": apt.zone,
+            "current_price": apt.current_price,
+            "min_price": apt.min_price,
+            "max_price": apt.max_price,
+            "beds24_id": apt.beds24_id,
+            "rules": [
+                {
+                    "rule_type": r.rule_type,
+                    "adjustment_pct": r.adjustment_pct,
+                    "fixed_value": r.fixed_value,
+                    "condition": r.condition,
+                }
+                for r in rules_raw
+            ],
+        })
+
+    events_raw = crud.get_upcoming_events(db, start_date, end_date)
+    events = [
+        {"name": e.name, "start_date": e.start_date, "end_date": e.end_date}
+        for e in events_raw
+    ]
+
+    # ── STEP 2: pre-carica mercato per (zona, data) — può fare db.commit() ─
+    zones = list({a["zone"] for a in apt_snapshots})
     market_cache: dict[tuple, dict] = {}
     current = start_date
     while current <= end_date:
@@ -89,20 +110,9 @@ async def get_pricing_analysis(
             market_cache[(zone, current)] = await get_competitor_prices(db, zone, current)
         current += timedelta(days=1)
 
-    # ── Calcola prezzi per appartamento usando la cache ──────────────────
-    # Snapshot dell'oggetto appartamento prima dei commit (già tutti in cache)
-    apt_data = [
-        {
-            "id": apt.id, "name": apt.name, "zone": apt.zone,
-            "current_price": apt.current_price, "min_price": apt.min_price,
-            "max_price": apt.max_price, "beds24_id": apt.beds24_id,
-            "rules": crud.get_rules_for_apartment(db, apt.id),
-        }
-        for apt in apartments
-    ]
-
+    # ── STEP 3: calcola prezzi — solo dict, zero accesso SQLAlchemy ────────
     result = []
-    for apt in apt_data:
+    for apt in apt_snapshots:
         dates_data = []
         current = start_date
         while current <= end_date:
@@ -111,8 +121,8 @@ async def get_pricing_analysis(
             market_max = market["max_price"]
 
             active_events = [
-                e for e in events_in_range
-                if e.start_date <= current <= e.end_date
+                e for e in events
+                if e["start_date"] <= current <= e["end_date"]
             ]
 
             suggested = _apply_rules(
@@ -126,7 +136,7 @@ async def get_pricing_analysis(
                 "market_max": market_max,
                 "suggested_price": suggested,
                 "has_event": bool(active_events),
-                "events": [e.name for e in active_events],
+                "events": [e["name"] for e in active_events],
             })
             current += timedelta(days=1)
 
