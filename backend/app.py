@@ -109,6 +109,7 @@ async def test_beds24():
     }
 
     async with httpx.AsyncClient() as client:
+        # Prova 1-3: varianti setup endpoint
         for name, payload in payloads.items():
             try:
                 r = await client.post(
@@ -119,6 +120,28 @@ async def test_beds24():
             except Exception as e:
                 results[name] = {"error": str(e)}
 
+        # Prova 4: chiave usata direttamente come token (senza setup)
+        try:
+            r = await client.get(
+                "https://api.beds24.com/v2/properties",
+                headers={"token": key},
+            )
+            results["direct_token_header"] = {"status": r.status_code, "body": r.text[:300]}
+        except Exception as e:
+            results["direct_token_header"] = {"error": str(e)}
+
+        # Prova 5: chiave come Bearer Authorization
+        try:
+            r = await client.get(
+                "https://api.beds24.com/v2/properties",
+                headers={"Authorization": f"Bearer {key}"},
+            )
+            results["bearer_auth"] = {"status": r.status_code, "body": r.text[:300]}
+        except Exception as e:
+            results["bearer_auth"] = {"error": str(e)}
+
+    results["key_length"] = len(key)
+    results["key_preview"] = key[:6] + "..." + key[-4:] if len(key) > 10 else "(troppo corta)"
     return results
 
 
