@@ -8,6 +8,7 @@ import logging
 import os
 
 from fastapi import FastAPI, Request, Response
+from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -93,26 +94,39 @@ async def update_prices(request: Request):
     return {"status": "prices updated"}
 
 
-@app.get("/admin/beds24-setup")
-async def beds24_setup(invite_code: str):
+class Beds24SetupRequest(BaseModel):
+    invite_code: str
+
+@app.post("/admin/beds24-setup")
+async def beds24_setup(body: Beds24SetupRequest):
     """
     Scambia un invite code Beds24 con un refresh token permanente.
-    Uso: /admin/beds24-setup?invite_code=XXXXXX
+    POST body: {"invite_code": "XXXXXX"}
     """
     import httpx
+    payload = {"inviteCode": body.invite_code}
     async with httpx.AsyncClient() as client:
         r = await client.post(
             "https://api.beds24.com/v2/authentication/setup",
-            json={"inviteCode": invite_code},
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            json=payload,
         )
-        data = r.json()
-        if r.status_code == 200 and data.get("refreshToken"):
+        try:
+            data = r.json()
+        except Exception:
+            data = r.text
+        if r.status_code == 200 and isinstance(data, dict) and data.get("refreshToken"):
             return {
                 "status": "ok",
                 "refresh_token": data["refreshToken"],
-                "istruzioni": "Salva 'refresh_token' come BEDS24_API_KEY su Railway e riavvia il servizio."
+                "istruzioni": "Salva 'refresh_token' come BEDS24_API_KEY su Railway e riavvia."
             }
-        return {"status": "errore", "response": data}
+        return {
+            "status": "errore",
+            "http_status": r.status_code,
+            "sent_payload": payload,
+            "response": data,
+        }
 
 
 @app.get("/admin/test-beds24")
