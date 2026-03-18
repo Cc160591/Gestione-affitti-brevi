@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db import crud, models
 from backend.integrations.beds24 import update_price as beds24_update_price
+from backend.integrations.market_data import get_competitor_prices
 
 router = APIRouter(prefix="/api/pricing", tags=["pricing"])
 
@@ -59,14 +60,14 @@ def _apply_rules(
 
 
 @router.get("")
-def get_pricing_analysis(
+async def get_pricing_analysis(
     start_date: date = Query(default=None),
     end_date: date = Query(default=None),
     db: Session = Depends(get_db),
 ):
     """
     Restituisce per ogni appartamento, per ogni data nel range:
-    - market_min / market_max  (da competitor_snapshots per zona)
+    - market_min / market_max  (da competitor_snapshots, generati on-demand se mancanti)
     - suggested_price          (calcolato server-side con pricing_rules)
     """
     if not start_date:
@@ -77,35 +78,17 @@ def get_pricing_analysis(
     apartments = crud.get_all_apartments(db)
     events_in_range = crud.get_upcoming_events(db, start_date, end_date)
 
-    # Pre-carica snapshot competitor per zona (ordinati DESC per data)
-    zones = list({apt.zone for apt in apartments})
-    zone_snapshots: dict[str, list] = {}
-    for zone in zones:
-        snaps = (
-            db.query(models.CompetitorSnapshot)
-            .filter(models.CompetitorSnapshot.zone == zone)
-            .order_by(models.CompetitorSnapshot.snapshot_date.desc())
-            .all()
-        )
-        zone_snapshots[zone] = snaps
-
     result = []
     for apt in apartments:
         rules = crud.get_rules_for_apartment(db, apt.id)
-        snaps = zone_snapshots.get(apt.zone, [])
 
         dates_data = []
         current = start_date
         while current <= end_date:
-            # Trova snapshot più recente <= current date per la zona
-            snap = None
-            for s in snaps:
-                if s.snapshot_date <= current:
-                    snap = s
-                    break  # lista già ordinata DESC
-
-            market_min = snap.min_price if snap else None
-            market_max = snap.max_price if snap else None
+            # get_competitor_prices: legge da DB se esiste, altrimenti genera mock e salva
+            market = await get_competitor_prices(db, apt.zone, current)
+            market_min = market["min_price"]
+            market_max = market["max_price"]
 
             # Eventi attivi in questa data
             active_events = [
@@ -113,13 +96,10 @@ def get_pricing_analysis(
                 if e.start_date <= current <= e.end_date
             ]
 
-            if market_min is not None:
-                suggested = _apply_rules(
-                    market_min, rules, current,
-                    active_events, apt.min_price, apt.max_price
-                )
-            else:
-                suggested = None
+            suggested = _apply_rules(
+                market_min, rules, current,
+                active_events, apt.min_price, apt.max_price
+            )
 
             dates_data.append({
                 "date": current.isoformat(),
